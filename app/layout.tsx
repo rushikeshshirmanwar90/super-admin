@@ -1,6 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Bounce, ToastContainer } from 'react-toastify';
+
 import "./globals.css";
+
+import { AdminSidebar } from "@/components/AdminSideBar";
+import { SidebarProvider } from "@/components/ui/sidebar"
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -27,7 +32,25 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
+
+        <ToastContainer
+          position="top-right"
+          autoClose={5000}
+          hideProgressBar={false}
+          newestOnTop={false}
+          closeOnClick={false}
+          rtl={false}
+          draggable
+          theme="light"
+          transition={Bounce}
+        />
+
+
+        <SidebarProvider defaultOpen={true}>
+
+          <AdminSidebar />
+          {children}
+        </SidebarProvider>
       </body>
     </html>
   );
