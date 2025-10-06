@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,27 +13,27 @@ import { handleImageUpload, removeImage } from "@/lib/image-upload"
 import Image from "next/image"
 import { errorToast, successToast } from "./toast"
 import axios from "axios"
+import { ClientData } from "@/lib/types"
 
-interface ClientData {
-    name: string
-    phoneNumber: string
-    email: string
-    city: string
-    state: string
-    address: string
-    logo: string
+
+
+interface ClientFormProps {
+    onClientAdded: (client: ClientData) => void
+    initialData?: ClientData | null
 }
 
-export function ClientForm() {
-    const [formData, setFormData] = useState<ClientData>({
-        name: "",
-        phoneNumber: "",
-        email: "",
-        city: "",
-        state: "",
-        address: "",
-        logo: "",
-    })
+export function ClientForm({ onClientAdded, initialData = null }: ClientFormProps) {
+    const [formData, setFormData] = useState<ClientData>(
+        initialData ?? {
+            name: "",
+            phoneNumber: "",
+            email: "",
+            city: "",
+            state: "",
+            address: "",
+            logo: "",
+        }
+    )
 
     const [logoImages, setLogoImages] = useState<string[]>([])
     const [isUploading, setIsUploading] = useState(false)
@@ -126,13 +126,18 @@ export function ClientForm() {
         }))
     }
 
+    // Reset logoImages if initialData changes
+    useEffect(() => {
+        if (initialData) {
+            setLogoImages(initialData.logo ? [initialData.logo] : [])
+        }
+    }, [initialData])
 
     const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-
+        e.preventDefault()
+        setIsSubmitting(true)
         try {
-            console.log("Sending client data:", formData);
+            console.log("Sending client data:", formData)
 
             const res = await axios.post(
                 `${process.env.NEXT_PUBLIC_DOMAIN2}/api/clients`,
@@ -143,17 +148,20 @@ export function ClientForm() {
                         "Accept": "application/json",
                     },
                 }
-            );
+            )
 
             if (res.status === 200) {
-                successToast("Client added successfully!");
-                alert("Client added successfully!");
+                successToast("Client added successfully!")
+                alert("Client added successfully!")
             } else {
-                errorToast("Something went wrong, can't add the client.");
+                errorToast("Something went wrong, can't add the client.")
             }
 
             // Simulate API delay
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await new Promise((resolve) => setTimeout(resolve, 2000))
+
+            // Call parent handler
+            onClientAdded(formData)
 
             // Reset form after successful submission
             setFormData({
@@ -164,8 +172,8 @@ export function ClientForm() {
                 state: "",
                 address: "",
                 logo: "",
-            });
-            setLogoImages([]);
+            })
+            setLogoImages([])
         } catch (error: unknown) {
             if (error instanceof Error) {
                 if (axios.isAxiosError(error)) {
@@ -173,31 +181,29 @@ export function ClientForm() {
                         message: error.message,
                         status: error.response?.status,
                         data: error.response?.data,
-                    });
+                    })
 
                     // Show backend error message if available
                     if (error.response?.data?.message) {
-                        errorToast(error.response.data.message);
-                        alert(error.response.data.message);
+                        errorToast(error.response.data.message)
+                        alert(error.response.data.message)
                     } else if (error.response) {
-                        errorToast(
-                            `Request failed with status ${error.response.status}`
-                        );
-                        alert(`Request failed with status ${error.response.status}`);
+                        errorToast(`Request failed with status ${error.response.status}`)
+                        alert(`Request failed with status ${error.response.status}`)
                     } else {
-                        errorToast(error.message || "Something went wrong.");
-                        alert(error.message || "Something went wrong.");
+                        errorToast(error.message || "Something went wrong.")
+                        alert(error.message || "Something went wrong.")
                     }
                 }
             } else {
-                console.error("Unexpected error:", error);
-                errorToast("Unexpected error occurred.");
-                alert("Unexpected error occurred.");
+                console.error("Unexpected error:", error)
+                errorToast("Unexpected error occurred.")
+                alert("Unexpected error occurred.")
             }
         } finally {
-            setIsSubmitting(false);
+            setIsSubmitting(false)
         }
-    };
+    }
 
     return (
         <div className="w-full min-h-screen p-4">
@@ -238,7 +244,10 @@ export function ClientForm() {
 
                         <div className="space-y-2">
                             <Label htmlFor="email">
-                                Email * {isEmailVerified && <CheckCircle className="inline h-4 w-4 text-green-500 ml-1" />}
+                                Email *{" "}
+                                {isEmailVerified && (
+                                    <CheckCircle className="inline h-4 w-4 text-green-500 ml-1" />
+                                )}
                             </Label>
                             <div className="flex gap-2">
                                 <Input
@@ -284,7 +293,11 @@ export function ClientForm() {
                                         maxLength={6}
                                         className="flex-1"
                                     />
-                                    <Button type="button" onClick={handleVerifyOtp} disabled={otp.length !== 6 || isVerifyingOtp}>
+                                    <Button
+                                        type="button"
+                                        onClick={handleVerifyOtp}
+                                        disabled={otp.length !== 6 || isVerifyingOtp}
+                                    >
                                         {isVerifyingOtp ? (
                                             <>
                                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -349,8 +362,12 @@ export function ClientForm() {
                                     <div className="text-center">
                                         <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
                                         <div className="space-y-2">
-                                            <p className="text-sm text-muted-foreground">Click to upload or drag and drop your logo</p>
-                                            <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 10MB</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                Click to upload or drag and drop your logo
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                PNG, JPG, GIF up to 10MB
+                                            </p>
                                         </div>
                                         <Input
                                             id="logo"
@@ -363,7 +380,9 @@ export function ClientForm() {
                                         {isUploading && (
                                             <div className="flex items-center justify-center mt-4">
                                                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                                <span className="text-sm text-muted-foreground">Uploading...</span>
+                                                <span className="text-sm text-muted-foreground">
+                                                    Uploading...
+                                                </span>
                                             </div>
                                         )}
                                     </div>
@@ -390,19 +409,30 @@ export function ClientForm() {
                                             </div>
                                         ))}
                                         <div className="mt-4">
-                                            <Input type="file" accept="image/*" onChange={handleLogoUpload} disabled={isUploading} />
+                                            <Input
+                                                type="file"
+                                                accept="image/*"
+                                                onChange={handleLogoUpload}
+                                                disabled={isUploading}
+                                            />
                                         </div>
                                     </div>
                                 )}
                             </div>
                         </div>
 
-                        <Button type="submit" className="w-full" disabled={isSubmitting || isUploading || !isEmailVerified}>
+                        <Button
+                            type="submit"
+                            className="w-full"
+                            disabled={isSubmitting || isUploading || !isEmailVerified}
+                        >
                             {isSubmitting ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                    Adding Client...
+                                    {initialData ? "Updating Client..." : "Adding Client..."}
                                 </>
+                            ) : initialData ? (
+                                "Update Client"
                             ) : (
                                 "Add Client"
                             )}

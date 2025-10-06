@@ -1,4 +1,4 @@
-import { ClientForm } from '@/components/client-form'
+import { ClientsTable } from '@/components/client-table'
 import React from 'react'
 
 const Page = () => {
@@ -9,7 +9,7 @@ const Page = () => {
           <h1 className="text-3xl font-bold text-foreground mb-2">Add New Client</h1>
           <p className="text-muted-foreground">Fill in the client information below</p>
         </div>
-        <ClientForm />
+        <ClientsTable />
       </div>
     </main>
   )
