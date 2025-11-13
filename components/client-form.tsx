@@ -15,8 +15,6 @@ import { errorToast, successToast } from "./toast"
 import axios from "axios"
 import { ClientData } from "@/lib/types"
 
-
-
 interface ClientFormProps {
     onClientAdded: (client: ClientData) => void
     initialData?: ClientData | null
@@ -140,22 +138,11 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
             console.log("Sending client data:", formData)
 
             const res = await axios.post(
-                `${process.env.NEXT_PUBLIC_DOMAIN2}/api/clients`,
-                formData,
-                {
-                    headers: {
-                        "Content-Type": "application/json",
-                        "Accept": "application/json",
-                    },
-                }
-            )
+                `${process.env.NEXT_PUBLIC_DOMAIN}/api/clients`,formData)
 
-            if (res.status === 200) {
-                successToast("Client added successfully!")
-                alert("Client added successfully!")
-            } else {
-                errorToast("Something went wrong, can't add the client.")
-            }
+            console.log("Response:", res)
+            successToast("Client added successfully!")
+            alert("Client added successfully!")
 
             // Simulate API delay
             await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -175,26 +162,33 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
             })
             setLogoImages([])
         } catch (error: unknown) {
-            if (error instanceof Error) {
-                if (axios.isAxiosError(error)) {
-                    console.error("Axios error details:", {
-                        message: error.message,
-                        status: error.response?.status,
-                        data: error.response?.data,
-                    })
+            console.error("Error caught:", error)
+            
+            if (axios.isAxiosError(error)) {
+                console.error("Axios error details:", {
+                    message: error.message,
+                    status: error.response?.status,
+                    data: error.response?.data,
+                })
 
-                    // Show backend error message if available
-                    if (error.response?.data?.message) {
-                        errorToast(error.response.data.message)
-                        alert(error.response.data.message)
-                    } else if (error.response) {
-                        errorToast(`Request failed with status ${error.response.status}`)
-                        alert(`Request failed with status ${error.response.status}`)
-                    } else {
-                        errorToast(error.message || "Something went wrong.")
-                        alert(error.message || "Something went wrong.")
-                    }
+                // Show backend error message if available
+                if (error.response?.data?.message) {
+                    errorToast(error.response.data.message)
+                    alert(error.response.data.message)
+                } else if (error.response?.status) {
+                    errorToast(`Request failed with status ${error.response.status}`)
+                    alert(`Request failed with status ${error.response.status}`)
+                } else if (error.message) {
+                    errorToast(error.message)
+                    alert(error.message)
+                } else {
+                    errorToast("Something went wrong, can't add the client.")
+                    alert("Something went wrong, can't add the client.")
                 }
+            } else if (error instanceof Error) {
+                console.error("Error message:", error.message)
+                errorToast(error.message || "Something went wrong.")
+                alert(error.message || "Something went wrong.")
             } else {
                 console.error("Unexpected error:", error)
                 errorToast("Unexpected error occurred.")

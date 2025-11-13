@@ -47,6 +47,7 @@ export function ClientsTable() {
         phoneNumber: 0,
         clientId: ""
     })
+
     const [adminClientId, setAdminClientId] = useState<string | null>(null)
 
     const handleClientAdded = (newClient: ClientData) => {
@@ -62,6 +63,9 @@ export function ClientsTable() {
                 ...newClient,
                 _id: (clients.length + 1).toString(),
             }
+
+            console.log(clients)
+
             setClients([...clients, clientWithId])
         }
         setIsDialogOpen(false)

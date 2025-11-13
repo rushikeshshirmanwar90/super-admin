@@ -129,7 +129,7 @@ export const handleSubmit = async (
     console.log("Sending client data:", formData);
 
     const res = await axios.post(
-      `${process.env.NEXT_PUBLIC_DOMAIN}/api/clients`,
+      `https://real-estate-apis.vercel.app/api/clients`,
       formData,
       {
         headers: {

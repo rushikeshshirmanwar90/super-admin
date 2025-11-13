@@ -1,7 +1,7 @@
 import axios from "axios"
 
 export const sendOtp = async (email: string) => {
-    const res = await axios.post(`${process.env.NEXT_PUBLIC_DOMAIN}/api/user/otp`, {
+    const res = await axios.post(`https://real-estate-apis.vercel.app/api/user/otp`, {
         email: email,
     });
 
