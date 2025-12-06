@@ -14,6 +14,7 @@ import Image from "next/image"
 import { errorToast, successToast } from "./toast"
 import axios from "axios"
 import { ClientData } from "@/lib/types"
+import { sendOtp } from "@/lib/functions/send-otp"
 
 interface ClientFormProps {
     onClientAdded: (client: ClientData) => void
@@ -67,17 +68,13 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
             const newOtp = Math.floor(100000 + Math.random() * 900000).toString()
             setGeneratedOtp(newOtp)
 
-            // Simulate sending OTP via email
-            console.log(`[v0] OTP sent to ${formData.email}: ${newOtp}`)
-
-            // In real implementation, you would call your email service here
-            await new Promise((resolve) => setTimeout(resolve, 1000))
+            await sendOtp(formData.email, Number(newOtp))
 
             setShowOtpInput(true)
-            alert(`OTP sent to ${formData.email}. Check your email! (For demo: ${newOtp})`)
+            successToast(`OTP sent to ${formData.email}. Check your email!`)
         } catch (error) {
             console.error("Error sending OTP:", error)
-            alert("Error sending OTP. Please try again.")
+            errorToast("Failed to send OTP. Please try again.")
         } finally {
             setIsVerifyingEmail(false)
         }
@@ -135,20 +132,29 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
         e.preventDefault()
         setIsSubmitting(true)
         try {
-            console.log("Sending client data:", formData)
+            let res
 
-            const res = await axios.post(
-                `${process.env.NEXT_PUBLIC_DOMAIN}/api/clients`,formData)
+            if (initialData?._id) {
+                // Update existing client
+                res = await axios.put(
+                    `${process.env.NEXT_PUBLIC_DOMAIN}/api/client?id=${initialData._id}`,
+                    formData
+                )
+                successToast("Client updated successfully!")
+            } else {
+                // Create new client
+                res = await axios.post(
+                    `${process.env.NEXT_PUBLIC_DOMAIN}/api/client`,
+                    formData
+                )
+                successToast("Client added successfully!")
+            }
 
-            console.log("Response:", res)
-            successToast("Client added successfully!")
-            alert("Client added successfully!")
+            // Use response data if available, otherwise use formData
+            const clientData = res.data?.clientData || res.data?.client || res.data || formData
 
-            // Simulate API delay
-            await new Promise((resolve) => setTimeout(resolve, 2000))
-
-            // Call parent handler
-            onClientAdded(formData)
+            // Call parent handler with the response data
+            onClientAdded(clientData)
 
             // Reset form after successful submission
             setFormData({
@@ -161,38 +167,25 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
                 logo: "",
             })
             setLogoImages([])
+            setIsEmailVerified(false)
+            setShowOtpInput(false)
+            setOtp("")
+            setGeneratedOtp("")
         } catch (error: unknown) {
-            console.error("Error caught:", error)
-            
-            if (axios.isAxiosError(error)) {
-                console.error("Axios error details:", {
-                    message: error.message,
-                    status: error.response?.status,
-                    data: error.response?.data,
-                })
+            console.error("Error adding client:", error)
 
-                // Show backend error message if available
-                if (error.response?.data?.message) {
-                    errorToast(error.response.data.message)
-                    alert(error.response.data.message)
-                } else if (error.response?.status) {
-                    errorToast(`Request failed with status ${error.response.status}`)
-                    alert(`Request failed with status ${error.response.status}`)
-                } else if (error.message) {
-                    errorToast(error.message)
-                    alert(error.message)
-                } else {
-                    errorToast("Something went wrong, can't add the client.")
-                    alert("Something went wrong, can't add the client.")
-                }
+            if (axios.isAxiosError(error)) {
+                const errorMessage = error.response?.data?.message
+                    || error.response?.data?.error
+                    || `Request failed with status ${error.response?.status}`
+                    || error.message
+                    || "Failed to add client. Please try again."
+
+                errorToast(errorMessage)
             } else if (error instanceof Error) {
-                console.error("Error message:", error.message)
                 errorToast(error.message || "Something went wrong.")
-                alert(error.message || "Something went wrong.")
             } else {
-                console.error("Unexpected error:", error)
                 errorToast("Unexpected error occurred.")
-                alert("Unexpected error occurred.")
             }
         } finally {
             setIsSubmitting(false)
@@ -239,7 +232,7 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
                         <div className="space-y-2">
                             <Label htmlFor="email">
                                 Email *{" "}
-                                {isEmailVerified && (
+                                {(isEmailVerified || initialData) && (
                                     <CheckCircle className="inline h-4 w-4 text-green-500 ml-1" />
                                 )}
                             </Label>
@@ -252,10 +245,10 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
                                     onChange={handleInputChange}
                                     required
                                     placeholder="Enter email address"
-                                    disabled={isEmailVerified}
+                                    disabled={isEmailVerified || !!initialData}
                                     className="flex-1"
                                 />
-                                {!isEmailVerified && (
+                                {!isEmailVerified && !initialData && (
                                     <Button
                                         type="button"
                                         variant="outline"
@@ -277,7 +270,7 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
                                 )}
                             </div>
 
-                            {showOtpInput && (
+                            {showOtpInput && !initialData && (
                                 <div className="flex gap-2 mt-2">
                                     <Input
                                         type="text"
@@ -418,7 +411,7 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
                         <Button
                             type="submit"
                             className="w-full"
-                            disabled={isSubmitting || isUploading || !isEmailVerified}
+                            disabled={isSubmitting || isUploading || (!isEmailVerified && !initialData)}
                         >
                             {isSubmitting ? (
                                 <>
@@ -432,7 +425,7 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
                             )}
                         </Button>
 
-                        {!isEmailVerified && formData.email && (
+                        {!isEmailVerified && !initialData && formData.email && (
                             <p className="text-sm text-muted-foreground text-center">
                                 Please verify your email address to enable form submission
                             </p>

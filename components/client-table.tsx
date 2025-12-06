@@ -17,18 +17,12 @@ import {
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ClientForm } from "@/components/client-form"
+import { AdminForm } from "@/components/admin-form"
 import { Plus, Mail, Phone, MapPin, MoreHorizontal, Edit, Trash2, Copy, Check } from "lucide-react"
 import Image from "next/image"
-import { ClientData } from "@/lib/types"
+import { ClientData, AdminData } from "@/lib/types"
 import axios from "axios"
-
-interface AdminData {
-    firstName: string
-    lastName: string
-    email: string
-    phoneNumber: number
-    clientId: string
-}
+import { errorToast, successToast } from "./toast"
 
 interface ClientDataWithAdmins extends ClientData {
     admins?: AdminData[]
@@ -40,39 +34,52 @@ export function ClientsTable() {
     const [editingClient, setEditingClient] = useState<ClientDataWithAdmins | null>(null)
     const [copiedId, setCopiedId] = useState<string | null>(null)
     const [isAdminDialogOpen, setIsAdminDialogOpen] = useState(false)
-    const [adminForm, setAdminForm] = useState<AdminData>({
-        firstName: "",
-        lastName: "",
-        email: "",
-        phoneNumber: 0,
-        clientId: ""
-    })
-
     const [adminClientId, setAdminClientId] = useState<string | null>(null)
+    const [editingAdmin, setEditingAdmin] = useState<AdminData | null>(null)
 
     const handleClientAdded = (newClient: ClientData) => {
         if (editingClient) {
+            // Update existing client in the list
             setClients(
                 clients.map((client) =>
-                    client._id === editingClient._id ? { ...newClient, _id: editingClient._id } : client,
+                    client._id === editingClient._id
+                        ? { ...newClient, _id: editingClient._id, admins: client.admins }
+                        : client,
                 ),
             )
             setEditingClient(null)
         } else {
-            const clientWithId: ClientData = {
+            // Add new client to the list
+            const clientWithAdmins: ClientDataWithAdmins = {
                 ...newClient,
-                _id: (clients.length + 1).toString(),
+                admins: []
             }
-
-            console.log(clients)
-
-            setClients([...clients, clientWithId])
+            setClients([...clients, clientWithAdmins])
         }
         setIsDialogOpen(false)
     }
 
-    const handleDeleteClient = (clientId: string) => {
-        setClients(clients.filter((client) => client._id !== clientId))
+    const handleDeleteClient = async (clientId: string) => {
+        try {
+            const client = clients.find(c => c._id === clientId)
+            if (!client) return
+
+            const res = await axios.delete(
+                `${process.env.NEXT_PUBLIC_DOMAIN}/api/client?email=${client.email}`
+            )
+
+            if (res.status === 200) {
+                setClients(clients.filter((client) => client._id !== clientId))
+                successToast("Client deleted successfully!")
+            }
+        } catch (error) {
+            console.error("Error deleting client:", error)
+            if (axios.isAxiosError(error)) {
+                errorToast(error.response?.data?.message || "Failed to delete client")
+            } else {
+                errorToast("Failed to delete client. Please try again.")
+            }
+        }
     }
 
     const handleCopyId = async (clientId: string) => {
@@ -98,69 +105,106 @@ export function ClientsTable() {
     }
 
     // Open admin dialog for a specific client
-    const handleOpenAdminDialog = (clientId: string) => {
+    const handleOpenAdminDialog = (clientId: string, admin?: AdminData) => {
         setAdminClientId(clientId)
-        setAdminForm({
-            firstName: "",
-            lastName: "",
-            email: "",
-            phoneNumber: 0,
-            clientId
-        })
+        setEditingAdmin(admin || null)
         setIsAdminDialogOpen(true)
     }
 
-    // Add admin for a specific client
-    const handleAddAdmin = async (e: React.FormEvent) => {
-        e.preventDefault()
-        console.log("handleAddAdmin called") // For debugging, remove in production
-        if (!adminClientId) return
-        const newAdmin: AdminData = {
-            ...adminForm,
-            clientId: adminClientId,
+    // Handle admin added/updated
+    const handleAdminAdded = (admin: AdminData) => {
+        if (editingAdmin) {
+            // Update existing admin
+            setClients((prev) =>
+                prev.map((client) =>
+                    client._id === adminClientId
+                        ? {
+                            ...client,
+                            admins: client.admins?.map((a) =>
+                                a._id === editingAdmin._id ? admin : a
+                            ),
+                        }
+                        : client
+                )
+            )
+        } else {
+            // Add new admin
+            setClients((prev) =>
+                prev.map((client) =>
+                    client._id === adminClientId
+                        ? { ...client, admins: [...(client.admins || []), admin] }
+                        : client
+                )
+            )
         }
-        setClients((prev) =>
-            prev.map((client) =>
-                client._id === adminClientId
-                    ? { ...client, admins: [...(client.admins || []), newAdmin] }
-                    : client,
-            ),
-        )
-
-        const payload = {
-            firstName: newAdmin.firstName,
-            lastName: newAdmin.lastName,
-            email: newAdmin.email,
-            phoneNumber: newAdmin.phoneNumber,
-            clientId: newAdmin.clientId,
-        }
-
-        // Console log required fields
-        console.log(payload)
-
-        const res = await axios.post(`${process.env.NEXT_PUBLIC_DOMAIN}/api/admin`, payload)
-
-        if (res) {
-            alert("Admin added successfully")
-        }
-
-        setAdminForm({
-            firstName: "",
-            lastName: "",
-            email: "",
-            phoneNumber: 0,
-            clientId: ""
-        })
-        setAdminClientId(null)
         setIsAdminDialogOpen(false)
+        setAdminClientId(null)
+        setEditingAdmin(null)
+    }
+
+    // Delete admin
+    const handleDeleteAdmin = async (adminId: string, clientId: string) => {
+        try {
+            const res = await axios.delete(
+                `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?id=${adminId}`
+            )
+
+            if (res.status === 200) {
+                setClients((prev) =>
+                    prev.map((client) =>
+                        client._id === clientId
+                            ? {
+                                ...client,
+                                admins: client.admins?.filter((a) => a._id !== adminId),
+                            }
+                            : client
+                    )
+                )
+                successToast("Admin deleted successfully!")
+            }
+        } catch (error) {
+            console.error("Error deleting admin:", error)
+            if (axios.isAxiosError(error)) {
+                errorToast(error.response?.data?.message || "Failed to delete admin")
+            } else {
+                errorToast("Failed to delete admin. Please try again.")
+            }
+        }
+    }
+
+    const handleCloseAdminDialog = () => {
+        setIsAdminDialogOpen(false)
+        setAdminClientId(null)
+        setEditingAdmin(null)
     }
 
     useEffect(() => {
         const getClientData = async () => {
-            const res = await axios.get(`${process.env.NEXT_PUBLIC_DOMAIN}/api/clients`)
-            const data = res.data.data
-            // Ensure each client has an admins array
-            setClients(data.map((c: ClientData) => ({ ...c, admins: [] })))
+            try {
+                const res = await axios.get(`${process.env.NEXT_PUBLIC_DOMAIN}/api/clients`)
+                const clientsData = res.data.clientData || res.data.data || []
+
+                // Fetch admins for each client
+                const clientsWithAdmins = await Promise.all(
+                    clientsData.map(async (client: ClientData) => {
+                        try {
+                            const adminRes = await axios.get(
+                                `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?clientId=${client._id}`
+                            )
+                            const admins = adminRes.data.data || []
+                            return { ...client, admins: Array.isArray(admins) ? admins : [admins] }
+                        } catch (error) {
+                            console.error(`Error fetching admins for client ${client._id}:`, error)
+                            return { ...client, admins: [] }
+                        }
+                    })
+                )
+
+                setClients(clientsWithAdmins)
+            } catch (error) {
+                console.error("Error fetching clients:", error)
+                errorToast("Failed to load clients")
+            }
         }
 
         getClientData()
@@ -258,23 +302,67 @@ export function ClientsTable() {
                                         <span className="text-sm text-muted-foreground">{client.address}</span>
                                     </TableCell>
                                     <TableCell className="w-[15%]">
-                                        {(!client.admins || client.admins.length === 0) ? (
-                                            <span className="text-xs text-muted-foreground">No admins</span>
-                                        ) : (
-                                            client.admins.map((admin, idx) => (
-                                                <div key={idx} className="text-xs">
-                                                    {admin.firstName} ({admin.email})
-                                                </div>
-                                            ))
-                                        )}
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            className="mt-2"
-                                            onClick={() => handleOpenAdminDialog(client._id ?? "")}
-                                        >
-                                            Add Admin
-                                        </Button>
+                                        <div className="space-y-2">
+                                            {(!client.admins || client.admins.length === 0) ? (
+                                                <span className="text-xs text-muted-foreground">No admins</span>
+                                            ) : (
+                                                client.admins.map((admin) => (
+                                                    <div key={admin._id} className="flex items-center justify-between gap-2 p-2 bg-muted/30 rounded">
+                                                        <div className="text-xs flex-1">
+                                                            <div className="font-medium">{admin.firstName} {admin.lastName}</div>
+                                                            <div className="text-muted-foreground">{admin.email}</div>
+                                                        </div>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                                                    <MoreHorizontal className="h-3 w-3" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end">
+                                                                <DropdownMenuItem onClick={() => handleOpenAdminDialog(client._id ?? "", admin)}>
+                                                                    <Edit className="mr-2 h-4 w-4" />
+                                                                    Edit
+                                                                </DropdownMenuItem>
+                                                                <AlertDialog>
+                                                                    <AlertDialogTrigger asChild>
+                                                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                                                            <Trash2 className="mr-2 h-4 w-4 text-red-600" />
+                                                                            <span className="text-red-600">Delete</span>
+                                                                        </DropdownMenuItem>
+                                                                    </AlertDialogTrigger>
+                                                                    <AlertDialogContent>
+                                                                        <AlertDialogHeader>
+                                                                            <AlertDialogTitle>Delete Admin?</AlertDialogTitle>
+                                                                            <AlertDialogDescription>
+                                                                                Are you sure you want to delete admin &quot;{admin.firstName} {admin.lastName}&quot;? This action cannot be undone.
+                                                                            </AlertDialogDescription>
+                                                                        </AlertDialogHeader>
+                                                                        <AlertDialogFooter>
+                                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                            <AlertDialogAction
+                                                                                onClick={() => handleDeleteAdmin(admin._id ?? "", client._id ?? "")}
+                                                                                className="bg-red-600 hover:bg-red-700"
+                                                                            >
+                                                                                Delete
+                                                                            </AlertDialogAction>
+                                                                        </AlertDialogFooter>
+                                                                    </AlertDialogContent>
+                                                                </AlertDialog>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                ))
+                                            )}
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="w-full"
+                                                onClick={() => handleOpenAdminDialog(client._id ?? "")}
+                                            >
+                                                <Plus className="mr-2 h-3 w-3" />
+                                                Add Admin
+                                            </Button>
+                                        </div>
                                     </TableCell>
                                     <TableCell className="w-[15%]">
                                         <DropdownMenu>
@@ -332,61 +420,20 @@ export function ClientsTable() {
                 </Table>
             </div>
 
-            {/* Add Admin Dialog */}
-            <Dialog open={isAdminDialogOpen} onOpenChange={setIsAdminDialogOpen}>
-                <DialogContent>
+            {/* Add/Edit Admin Dialog */}
+            <Dialog open={isAdminDialogOpen} onOpenChange={handleCloseAdminDialog}>
+                <DialogContent className="max-w-2xl">
                     <DialogHeader>
-                        <DialogTitle>Add Admin</DialogTitle>
+                        <DialogTitle>{editingAdmin ? "Edit Admin" : "Add Admin"}</DialogTitle>
                     </DialogHeader>
-                    <form onSubmit={handleAddAdmin} className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium mb-1">First Name</label>
-                            <input
-                                type="text"
-                                required
-                                value={adminForm.firstName}
-                                onChange={e => setAdminForm({ ...adminForm, firstName: e.target.value })}
-                                className="w-full border rounded px-2 py-1"
-                                placeholder="First name"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-1">Last Name</label>
-                            <input
-                                type="text"
-                                required
-                                value={adminForm.lastName}
-                                onChange={e => setAdminForm({ ...adminForm, lastName: e.target.value })}
-                                className="w-full border rounded px-2 py-1"
-                                placeholder="Last name"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-1">Email</label>
-                            <input
-                                type="email"
-                                required
-                                value={adminForm.email}
-                                onChange={e => setAdminForm({ ...adminForm, email: e.target.value })}
-                                className="w-full border rounded px-2 py-1"
-                                placeholder="Admin email"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium mb-1">Phone Number</label>
-                            <input
-                                type="number"
-                                required
-                                value={adminForm.phoneNumber === 0 ? "" : adminForm.phoneNumber}
-                                onChange={e => setAdminForm({ ...adminForm, phoneNumber: Number(e.target.value) })}
-                                className="w-full border rounded px-2 py-1"
-                                placeholder="Phone number"
-                            />
-                        </div>
-                        <Button type="submit" className="w-full">
-                            Add Admin
-                        </Button>
-                    </form>
+                    {adminClientId && (
+                        <AdminForm
+                            onAdminAdded={handleAdminAdded}
+                            clientId={adminClientId}
+                            initialData={editingAdmin}
+                            onClose={handleCloseAdminDialog}
+                        />
+                    )}
                 </DialogContent>
             </Dialog>
         </div>
