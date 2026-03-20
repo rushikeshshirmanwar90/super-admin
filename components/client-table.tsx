@@ -18,7 +18,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ClientForm } from "@/components/client-form"
 import { AdminForm } from "@/components/admin-form"
-import { Plus, Mail, Phone, MapPin, MoreHorizontal, Edit, Trash2, Copy, Check } from "lucide-react"
+import { Plus, Mail, Phone, MapPin, MoreHorizontal, Edit, Trash2, Copy, Check, Users, Loader2, ChevronDown, ChevronUp } from "lucide-react"
 import Image from "next/image"
 import { ClientData, AdminData } from "@/lib/types"
 import axios from "axios"
@@ -26,6 +26,8 @@ import { errorToast, successToast } from "./toast"
 
 interface ClientDataWithAdmins extends ClientData {
     admins?: AdminData[]
+    adminsLoaded?: boolean
+    loadingAdmins?: boolean
 }
 
 export function ClientsTable() {
@@ -36,6 +38,7 @@ export function ClientsTable() {
     const [isAdminDialogOpen, setIsAdminDialogOpen] = useState(false)
     const [adminClientId, setAdminClientId] = useState<string | null>(null)
     const [editingAdmin, setEditingAdmin] = useState<AdminData | null>(null)
+    const [expandedAddresses, setExpandedAddresses] = useState<Set<string>>(new Set())
 
     const handleClientAdded = (newClient: ClientData) => {
         if (editingClient) {
@@ -43,7 +46,7 @@ export function ClientsTable() {
             setClients(
                 clients.map((client) =>
                     client._id === editingClient._id
-                        ? { ...newClient, _id: editingClient._id, admins: client.admins }
+                        ? { ...newClient, _id: editingClient._id, admins: client.admins, adminsLoaded: client.adminsLoaded }
                         : client,
                 ),
             )
@@ -52,7 +55,8 @@ export function ClientsTable() {
             // Add new client to the list
             const clientWithAdmins: ClientDataWithAdmins = {
                 ...newClient,
-                admins: []
+                admins: [],
+                adminsLoaded: false
             }
             setClients([...clients, clientWithAdmins])
         }
@@ -84,6 +88,7 @@ export function ClientsTable() {
 
     const handleCopyId = async (clientId: string) => {
         try {
+            console.log("Copying client ID:", clientId)
             await navigator.clipboard.writeText(clientId)
             setCopiedId(clientId)
             setTimeout(() => setCopiedId(null), 2000)
@@ -104,8 +109,71 @@ export function ClientsTable() {
         }
     }
 
+    // Load admins for a specific client
+    const handleLoadAdmins = async (clientId: string) => {
+        try {
+            console.log("Loading admins for client ID:", clientId)
+            // Set loading state
+            setClients((prev) =>
+                prev.map((client) =>
+                    client._id === clientId
+                        ? { ...client, loadingAdmins: true }
+                        : client
+                )
+            )
+
+            const adminRes = await axios.get(
+                `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?clientId=${clientId}`
+            )
+            const admins = adminRes.data.data || []
+
+            setClients((prev) =>
+                prev.map((client) =>
+                    client._id === clientId
+                        ? {
+                            ...client,
+                            admins: Array.isArray(admins) ? admins : [admins],
+                            adminsLoaded: true,
+                            loadingAdmins: false
+                        }
+                        : client
+                )
+            )
+        } catch (error) {
+            console.error(`Error fetching admins for client ${clientId}:`, error)
+            
+            // Check if it's a 404 error (no admin found)
+            if (axios.isAxiosError(error) && error.response?.status === 404) {
+                // Set admins as empty array and mark as loaded for 404 case
+                setClients((prev) =>
+                    prev.map((client) =>
+                        client._id === clientId
+                            ? {
+                                ...client,
+                                admins: [],
+                                adminsLoaded: true,
+                                loadingAdmins: false
+                            }
+                            : client
+                    )
+                )
+            } else {
+                // For other errors, show error toast and reset loading state
+                errorToast("Failed to load admins")
+                setClients((prev) =>
+                    prev.map((client) =>
+                        client._id === clientId
+                            ? { ...client, loadingAdmins: false }
+                            : client
+                    )
+                )
+            }
+        }
+    }
+
     // Open admin dialog for a specific client
     const handleOpenAdminDialog = (clientId: string, admin?: AdminData) => {
+        console.log("Opening admin dialog for client ID:", clientId)
         setAdminClientId(clientId)
         setEditingAdmin(admin || null)
         setIsAdminDialogOpen(true)
@@ -178,32 +246,75 @@ export function ClientsTable() {
         setEditingAdmin(null)
     }
 
+    // Toggle address expansion
+    const toggleAddressExpansion = (clientId: string) => {
+        setExpandedAddresses(prev => {
+            const newSet = new Set(prev)
+            if (newSet.has(clientId)) {
+                newSet.delete(clientId)
+            } else {
+                newSet.add(clientId)
+            }
+            return newSet
+        })
+    }
+
+    // Truncate address text
+    const truncateAddress = (address: string, maxLength: number = 50) => {
+        if (address.length <= maxLength) return address
+        return address.substring(0, maxLength) + "..."
+    }
+
     useEffect(() => {
         const getClientData = async () => {
             try {
-                const res = await axios.get(`${process.env.NEXT_PUBLIC_DOMAIN}/api/clients`)
-                const clientsData = res.data.clientData || res.data.data || []
+                // Try /api/client first (without 's')
+                const res = await axios.get(`${process.env.NEXT_PUBLIC_DOMAIN}/api/client`)
 
-                // Fetch admins for each client
-                const clientsWithAdmins = await Promise.all(
-                    clientsData.map(async (client: ClientData) => {
-                        try {
-                            const adminRes = await axios.get(
-                                `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?clientId=${client._id}`
-                            )
-                            const admins = adminRes.data.data || []
-                            return { ...client, admins: Array.isArray(admins) ? admins : [admins] }
-                        } catch (error) {
-                            console.error(`Error fetching admins for client ${client._id}:`, error)
-                            return { ...client, admins: [] }
-                        }
-                    })
-                )
+                console.log("Full API Response:", res.data)
 
-                setClients(clientsWithAdmins)
+                // Based on your API code, successResponse wraps data like: { success: true, data: [...], message: "..." }
+                let clientsData: ClientData[] = []
+
+                if (res.data && res.data.data) {
+                    // If data property exists, use it
+                    if (Array.isArray(res.data.data)) {
+                        clientsData = res.data.data
+                    } else if (typeof res.data.data === 'object') {
+                        // Single client object, wrap in array
+                        clientsData = [res.data.data]
+                    }
+                } else if (Array.isArray(res.data)) {
+                    // Direct array response
+                    clientsData = res.data
+                }
+
+                console.log("Extracted clientsData:", clientsData)
+                console.log("Number of clients:", clientsData.length)
+
+                if (!Array.isArray(clientsData)) {
+                    console.error("clientsData is not an array:", clientsData)
+                    errorToast("Invalid data format received from server")
+                    return
+                }
+
+                // Map clients with admin properties
+                const clientsWithoutAdmins = clientsData.map((client: ClientData) => ({
+                    ...client,
+                    admins: [],
+                    adminsLoaded: false,
+                    loadingAdmins: false
+                }))
+
+                console.log("Final clients to set:", clientsWithoutAdmins)
+                setClients(clientsWithoutAdmins)
             } catch (error) {
                 console.error("Error fetching clients:", error)
-                errorToast("Failed to load clients")
+                if (axios.isAxiosError(error)) {
+                    errorToast(error.response?.data?.message || "Failed to load clients")
+                } else {
+                    errorToast("Failed to load clients")
+                }
             }
         }
 
@@ -249,8 +360,8 @@ export function ClientsTable() {
                             <TableHead className="w-[15%]">Name</TableHead>
                             <TableHead className="w-[15%]">Contact</TableHead>
                             <TableHead className="w-[10%]">Location</TableHead>
-                            <TableHead className="w-[20%]">Address</TableHead>
-                            <TableHead className="w-[15%]">Admins</TableHead>
+                            <TableHead className="w-[15%]">Address</TableHead>
+                            <TableHead className="w-[20%]">Admins</TableHead>
                             <TableHead className="w-[15%]">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
@@ -262,159 +373,242 @@ export function ClientsTable() {
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            clients.map((client) => (
-                                <TableRow key={client._id} className="hover:bg-muted/30">
-                                    <TableCell className="w-[15%]">
-                                        <div className="w-10 h-10 rounded-full overflow-hidden bg-muted flex items-center justify-center">
-                                            <Image
-                                                src={client.logo || "/placeholder.svg"}
-                                                alt={`${client.name} logo`}
-                                                width={40}
-                                                height={40}
-                                                className="object-cover"
-                                            />
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="w-[15%]">
-                                        <div className="font-medium text-foreground">{client.name}</div>
-                                    </TableCell>
-                                    <TableCell className="w-[15%]">
-                                        <div className="space-y-1">
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <Mail className="h-3 w-3 text-muted-foreground" />
-                                                <span className="text-muted-foreground">{client.email}</span>
+                            clients.map((client, idx) => {
+                                console.log("Client object:", client);
+                                console.log("Client keys:", Object.keys(client));
+                                console.log("Client _id:", client._id);
+
+                                // Safely access properties with fallbacks
+                                const anyClient = client as any;
+                                const name = anyClient.name || anyClient.companyName || anyClient.clientName || 'N/A';
+                                const email = anyClient.email || anyClient.contactEmail || 'N/A';
+                                const phoneNumber = anyClient.phoneNumber || anyClient.phone || anyClient.contactNumber || 'N/A';
+                                const city = anyClient.city || 'N/A';
+                                const state = anyClient.state || 'N/A';
+                                const address = anyClient.address || anyClient.fullAddress || 'N/A';
+                                const logo = anyClient.logo || anyClient.logoUrl || '/placeholder.svg';
+
+                                // Get the client ID that will be used consistently
+                                const clientId = client._id ?? "";
+                                console.log("Using client ID for this row:", clientId);
+
+                                return (
+                                    <TableRow key={clientId || client.email || idx} className="hover:bg-muted/30">
+                                        <TableCell className="w-[15%]">
+                                            <div className="w-10 h-10 rounded-full overflow-hidden bg-muted flex items-center justify-center">
+                                                <Image
+                                                    src={logo}
+                                                    alt={`${name} logo`}
+                                                    width={40}
+                                                    height={40}
+                                                    className="object-cover"
+                                                />
                                             </div>
-                                            <div className="flex items-center gap-2 text-sm">
-                                                <Phone className="h-3 w-3 text-muted-foreground" />
-                                                <span className="text-muted-foreground">{client.phoneNumber}</span>
+                                        </TableCell>
+                                        <TableCell className="w-[15%]">
+                                            <div className="font-medium text-foreground">{name}</div>
+                                        </TableCell>
+                                        <TableCell className="w-[15%]">
+                                            <div className="space-y-1">
+                                                <div className="flex items-center gap-2 text-sm">
+                                                    <Mail className="h-3 w-3 text-muted-foreground" />
+                                                    <span className="text-muted-foreground">{email}</span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-sm">
+                                                    <Phone className="h-3 w-3 text-muted-foreground" />
+                                                    <span className="text-muted-foreground">{phoneNumber}</span>
+                                                </div>
                                             </div>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="w-[10%]">
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <MapPin className="h-3 w-3 text-muted-foreground" />
-                                            <span className="text-muted-foreground">
-                                                {client.city}, {client.state}
-                                            </span>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="w-[20%]">
-                                        <span className="text-sm text-muted-foreground">{client.address}</span>
-                                    </TableCell>
-                                    <TableCell className="w-[15%]">
-                                        <div className="space-y-2">
-                                            {(!client.admins || client.admins.length === 0) ? (
-                                                <span className="text-xs text-muted-foreground">No admins</span>
-                                            ) : (
-                                                client.admins.map((admin) => (
-                                                    <div key={admin._id} className="flex items-center justify-between gap-2 p-2 bg-muted/30 rounded">
-                                                        <div className="text-xs flex-1">
-                                                            <div className="font-medium">{admin.firstName} {admin.lastName}</div>
-                                                            <div className="text-muted-foreground">{admin.email}</div>
-                                                        </div>
-                                                        <DropdownMenu>
-                                                            <DropdownMenuTrigger asChild>
-                                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                                                                    <MoreHorizontal className="h-3 w-3" />
+                                        </TableCell>
+                                        <TableCell className="w-[10%]">
+                                            <div className="flex items-center gap-2 text-sm">
+                                                <MapPin className="h-3 w-3 text-muted-foreground" />
+                                                <span className="text-muted-foreground">
+                                                    {city}, {state}
+                                                </span>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="w-[15%]">
+                                            <div className="space-y-1">
+                                                <div className="text-sm text-muted-foreground">
+                                                    {expandedAddresses.has(clientId) ? address : truncateAddress(address)}
+                                                </div>
+                                                {address.length > 50 && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-6 p-1 text-xs text-blue-600 hover:text-blue-800"
+                                                        onClick={() => toggleAddressExpansion(clientId)}
+                                                    >
+                                                        {expandedAddresses.has(clientId) ? (
+                                                            <>
+                                                                <ChevronUp className="h-3 w-3 mr-1" />
+                                                                See less
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <ChevronDown className="h-3 w-3 mr-1" />
+                                                                See more
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="w-[20%]">
+                                            <div className="space-y-2">
+                                                {!client.adminsLoaded ? (
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="w-full"
+                                                        onClick={() => handleLoadAdmins(clientId)}
+                                                        disabled={client.loadingAdmins}
+                                                    >
+                                                        {client.loadingAdmins ? (
+                                                            <>
+                                                                <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                                                                Loading...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Users className="mr-2 h-3 w-3" />
+                                                                Load Admins
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                ) : (
+                                                    <>
+                                                        {(!client.admins || client.admins.length === 0) ? (
+                                                            <div className="space-y-2">
+                                                                <div className="text-xs text-muted-foreground text-center py-2">
+                                                                    No admin
+                                                                </div>
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="w-full"
+                                                                    onClick={() => handleOpenAdminDialog(clientId)}
+                                                                >
+                                                                    <Plus className="mr-2 h-3 w-3" />
+                                                                    Add Admin
                                                                 </Button>
-                                                            </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end">
-                                                                <DropdownMenuItem onClick={() => handleOpenAdminDialog(client._id ?? "", admin)}>
-                                                                    <Edit className="mr-2 h-4 w-4" />
-                                                                    Edit
-                                                                </DropdownMenuItem>
-                                                                <AlertDialog>
-                                                                    <AlertDialogTrigger asChild>
-                                                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                                                            <Trash2 className="mr-2 h-4 w-4 text-red-600" />
-                                                                            <span className="text-red-600">Delete</span>
-                                                                        </DropdownMenuItem>
-                                                                    </AlertDialogTrigger>
-                                                                    <AlertDialogContent>
-                                                                        <AlertDialogHeader>
-                                                                            <AlertDialogTitle>Delete Admin?</AlertDialogTitle>
-                                                                            <AlertDialogDescription>
-                                                                                Are you sure you want to delete admin &quot;{admin.firstName} {admin.lastName}&quot;? This action cannot be undone.
-                                                                            </AlertDialogDescription>
-                                                                        </AlertDialogHeader>
-                                                                        <AlertDialogFooter>
-                                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                                            <AlertDialogAction
-                                                                                onClick={() => handleDeleteAdmin(admin._id ?? "", client._id ?? "")}
-                                                                                className="bg-red-600 hover:bg-red-700"
-                                                                            >
-                                                                                Delete
-                                                                            </AlertDialogAction>
-                                                                        </AlertDialogFooter>
-                                                                    </AlertDialogContent>
-                                                                </AlertDialog>
-                                                            </DropdownMenuContent>
-                                                        </DropdownMenu>
-                                                    </div>
-                                                ))
-                                            )}
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="w-full"
-                                                onClick={() => handleOpenAdminDialog(client._id ?? "")}
-                                            >
-                                                <Plus className="mr-2 h-3 w-3" />
-                                                Add Admin
-                                            </Button>
-                                        </div>
-                                    </TableCell>
-                                    <TableCell className="w-[15%]">
-                                        <DropdownMenu>
-                                            <DropdownMenuTrigger asChild>
-                                                <Button variant="ghost" className="h-8 w-8 p-0">
-                                                    <MoreHorizontal className="h-4 w-4" />
-                                                </Button>
-                                            </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="end">
-                                                <DropdownMenuItem onClick={() => handleEditClient(client)}>
-                                                    <Edit className="mr-2 h-4 w-4" />
-                                                    Edit
-                                                </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => handleCopyId(client._id ?? "")}>
-                                                    {copiedId === client._id ? (
-                                                        <Check className="mr-2 h-4 w-4 text-green-600" />
-                                                    ) : (
-                                                        <Copy className="mr-2 h-4 w-4" />
-                                                    )}
-                                                    {copiedId === client._id ? "Copied!" : "Copy ID"}
-                                                </DropdownMenuItem>
-                                                <AlertDialog>
-                                                    <AlertDialogTrigger asChild>
-                                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                                                            <Trash2 className="mr-2 h-4 w-4 text-red-600" />
-                                                            <span className="text-red-600">Delete</span>
-                                                        </DropdownMenuItem>
-                                                    </AlertDialogTrigger>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                This action cannot be undone. This will permanently delete the client &quot;{client.name}&quot;
-                                                                and remove their data from the system.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction
-                                                                onClick={() => handleDeleteClient(client._id ?? "")}
-                                                                className="bg-red-600 hover:bg-red-700"
-                                                            >
-                                                                Delete
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
-                                            </DropdownMenuContent>
-                                        </DropdownMenu>
-                                    </TableCell>
-                                </TableRow>
-                            ))
+                                                            </div>
+                                                        ) : (
+                                                            <>
+                                                                {client.admins.map((admin) => (
+                                                                    <div key={admin._id} className="flex items-center justify-between gap-2 p-2 bg-muted/30 rounded">
+                                                                        <div className="text-xs flex-1">
+                                                                            <div className="font-medium">{admin.firstName} {admin.lastName}</div>
+                                                                            <div className="text-muted-foreground">{admin.email}</div>
+                                                                        </div>
+                                                                        <DropdownMenu>
+                                                                            <DropdownMenuTrigger asChild>
+                                                                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                                                                                    <MoreHorizontal className="h-3 w-3" />
+                                                                                </Button>
+                                                                            </DropdownMenuTrigger>
+                                                                            <DropdownMenuContent align="end">
+                                                                                <DropdownMenuItem onClick={() => handleOpenAdminDialog(clientId, admin)}>
+                                                                                    <Edit className="mr-2 h-4 w-4" />
+                                                                                    Edit
+                                                                                </DropdownMenuItem>
+                                                                                <AlertDialog>
+                                                                                    <AlertDialogTrigger asChild>
+                                                                                        <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                                                                            <Trash2 className="mr-2 h-4 w-4 text-red-600" />
+                                                                                            <span className="text-red-600">Delete</span>
+                                                                                        </DropdownMenuItem>
+                                                                                    </AlertDialogTrigger>
+                                                                                    <AlertDialogContent>
+                                                                                        <AlertDialogHeader>
+                                                                                            <AlertDialogTitle>Delete Admin?</AlertDialogTitle>
+                                                                                            <AlertDialogDescription>
+                                                                                                Are you sure you want to delete admin &quot;{admin.firstName} {admin.lastName}&quot;? This action cannot be undone.
+                                                                                            </AlertDialogDescription>
+                                                                                        </AlertDialogHeader>
+                                                                                        <AlertDialogFooter>
+                                                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                                            <AlertDialogAction
+                                                                                                onClick={() => handleDeleteAdmin(admin._id ?? "", clientId)}
+                                                                                                className="bg-red-600 hover:bg-red-700"
+                                                                                            >
+                                                                                                Delete
+                                                                                            </AlertDialogAction>
+                                                                                        </AlertDialogFooter>
+                                                                                    </AlertDialogContent>
+                                                                                </AlertDialog>
+                                                                            </DropdownMenuContent>
+                                                                        </DropdownMenu>
+                                                                    </div>
+                                                                ))}
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    className="w-full"
+                                                                    onClick={() => handleOpenAdminDialog(clientId)}
+                                                                >
+                                                                    <Plus className="mr-2 h-3 w-3" />
+                                                                    Add Admin
+                                                                </Button>
+                                                            </>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="w-[15%]">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button variant="ghost" className="h-8 w-8 p-0">
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuItem onClick={() => handleEditClient(client)}>
+                                                        <Edit className="mr-2 h-4 w-4" />
+                                                        Edit
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem onClick={() => handleCopyId(clientId)}>
+                                                        {copiedId === clientId ? (
+                                                            <Check className="mr-2 h-4 w-4 text-green-600" />
+                                                        ) : (
+                                                            <Copy className="mr-2 h-4 w-4" />
+                                                        )}
+                                                        {copiedId === clientId ? "Copied!" : "Copy ID"}
+                                                    </DropdownMenuItem>
+                                                    <AlertDialog>
+                                                        <AlertDialogTrigger asChild>
+                                                            <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                                                                <Trash2 className="mr-2 h-4 w-4 text-red-600" />
+                                                                <span className="text-red-600">Delete</span>
+                                                            </DropdownMenuItem>
+                                                        </AlertDialogTrigger>
+                                                        <AlertDialogContent>
+                                                            <AlertDialogHeader>
+                                                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                                <AlertDialogDescription>
+                                                                    This action cannot be undone. This will permanently delete the client &quot;{client.name}&quot;
+                                                                    and remove their data from the system.
+                                                                </AlertDialogDescription>
+                                                            </AlertDialogHeader>
+                                                            <AlertDialogFooter>
+                                                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                                <AlertDialogAction
+                                                                    onClick={() => handleDeleteClient(clientId)}
+                                                                    className="bg-red-600 hover:bg-red-700"
+                                                                >
+                                                                    Delete
+                                                                </AlertDialogAction>
+                                                            </AlertDialogFooter>
+                                                        </AlertDialogContent>
+                                                    </AlertDialog>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
+                                    </TableRow>
+                                )
+                            })
                         )}
                     </TableBody>
                 </Table>

@@ -19,6 +19,8 @@ interface AdminFormProps {
 }
 
 export function AdminForm({ onAdminAdded, clientId, initialData = null, onClose }: AdminFormProps) {
+    console.log("AdminForm received clientId:", clientId)
+    
     const [formData, setFormData] = useState<AdminData>(
         initialData ?? {
             firstName: "",
@@ -108,6 +110,8 @@ export function AdminForm({ onAdminAdded, clientId, initialData = null, onClose 
                 successToast("Admin updated successfully!")
             } else {
                 // Create new admin
+                console.log("Creating new admin with formData:", formData)
+                console.log("ClientId being sent:", formData.clientId)
                 res = await axios.post(
                     `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin`,
                     formData
