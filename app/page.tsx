@@ -1,5 +1,4 @@
 import { ClientsTable } from '@/components/client-table'
-import React from 'react'
 
 const Page = () => {
   return (

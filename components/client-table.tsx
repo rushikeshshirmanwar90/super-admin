@@ -18,7 +18,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ClientForm } from "@/components/client-form"
 import { AdminForm } from "@/components/admin-form"
-import { Plus, Mail, Phone, MapPin, MoreHorizontal, Edit, Trash2, Copy, Check, Users, Loader2, ChevronDown, ChevronUp } from "lucide-react"
+import { LicenseForm } from "@/components/license-form"
+import { Plus, Mail, Phone, MapPin, MoreHorizontal, Edit, Trash2, Copy, Check, Users, Loader2, ChevronDown, ChevronUp, Clock, Shield, AlertTriangle } from "lucide-react"
 import Image from "next/image"
 import { ClientData, AdminData } from "@/lib/types"
 import axios from "axios"
@@ -28,6 +29,9 @@ interface ClientDataWithAdmins extends ClientData {
     admins?: AdminData[]
     adminsLoaded?: boolean
     loadingAdmins?: boolean
+    licenseExpiryDate?: string
+    license?: number
+    isLicenseActive?: boolean
 }
 
 export function ClientsTable() {
@@ -39,6 +43,10 @@ export function ClientsTable() {
     const [adminClientId, setAdminClientId] = useState<string | null>(null)
     const [editingAdmin, setEditingAdmin] = useState<AdminData | null>(null)
     const [expandedAddresses, setExpandedAddresses] = useState<Set<string>>(new Set())
+    const [isLicenseDialogOpen, setIsLicenseDialogOpen] = useState(false)
+    const [licenseClientId, setLicenseClientId] = useState<string | null>(null)
+    const [licenseClientName, setLicenseClientName] = useState<string>("")
+    const [currentLicense, setCurrentLicense] = useState<number>(0)
 
     const handleClientAdded = (newClient: ClientData) => {
         if (editingClient) {
@@ -240,6 +248,68 @@ export function ClientsTable() {
         }
     }
 
+    // Open license dialog for a specific client
+    const handleOpenLicenseDialog = (clientId: string, clientName: string, license: number) => {
+        setLicenseClientId(clientId)
+        setLicenseClientName(clientName)
+        setCurrentLicense(license)
+        setIsLicenseDialogOpen(true)
+    }
+
+    // Handle license updated
+    const handleLicenseUpdated = (clientId: string, newLicense: number, isActive: boolean, expiryDate?: string) => {
+        setClients((prev) =>
+            prev.map((client) =>
+                client._id === clientId
+                    ? { 
+                        ...client, 
+                        license: newLicense, 
+                        isLicenseActive: isActive,
+                        licenseExpiryDate: expiryDate
+                    }
+                    : client
+            )
+        )
+        setIsLicenseDialogOpen(false)
+        setLicenseClientId(null)
+        setLicenseClientName("")
+        setCurrentLicense(0)
+    }
+
+    // Get license status display
+    const getLicenseStatus = (license: number, isActive: boolean) => {
+        if (license === -1) {
+            return {
+                text: "Lifetime",
+                color: "text-green-600",
+                bgColor: "bg-green-100",
+                icon: "shield"
+            }
+        }
+        if (license === 0 || !isActive) {
+            return {
+                text: "Expired",
+                color: "text-red-600",
+                bgColor: "bg-red-100",
+                icon: "alert-triangle"
+            }
+        }
+        if (license <= 7) {
+            return {
+                text: `${license}d left`,
+                color: "text-orange-600",
+                bgColor: "bg-orange-100",
+                icon: "clock"
+            }
+        }
+        return {
+            text: `${license}d left`,
+            color: "text-blue-600",
+            bgColor: "bg-blue-100",
+            icon: "clock"
+        }
+    }
+
     const handleCloseAdminDialog = () => {
         setIsAdminDialogOpen(false)
         setAdminClientId(null)
@@ -320,19 +390,23 @@ export function ClientsTable() {
 
         getClientData()
     }, [])
-
     return (
         <div className="w-full space-y-6">
             {/* Header with Add Client and Add Admin Button */}
             <div className="flex justify-between items-center">
                 <div>
                     <h2 className="text-2xl font-semibold text-foreground">All Clients</h2>
+
                     <p className="text-muted-foreground">Total clients: {clients.length}</p>
                     <p className="text-muted-foreground">
                         Admins: {clients.reduce((acc, client) => acc + (client.admins?.length || 0), 0)}
                     </p>
+                    <p className="text-muted-foreground">
+                        Active licenses: {clients.filter(c => (c.license ?? 0) > 0 || (c.license ?? 0) === -1).length} | 
+                        Expired: {clients.filter(c => (c.license ?? 0) === 0).length} | 
+                        Lifetime: {clients.filter(c => (c.license ?? 0) === -1).length}
+                    </p>
                 </div>
-
                 <div className="flex gap-2">
                     <Dialog open={isDialogOpen} onOpenChange={handleDialogClose}>
                         <DialogTrigger asChild>
@@ -345,30 +419,31 @@ export function ClientsTable() {
                             <DialogHeader>
                                 <DialogTitle>{editingClient ? "Edit Client" : "Add New Client"}</DialogTitle>
                             </DialogHeader>
+
                             <ClientForm onClientAdded={handleClientAdded} initialData={editingClient} />
                         </DialogContent>
                     </Dialog>
                 </div>
             </div>
-
             {/* Clients Table */}
             <div className="border rounded-lg overflow-hidden">
                 <Table>
                     <TableHeader>
                         <TableRow className="bg-muted/50">
-                            <TableHead className="w-[15%]">Logo</TableHead>
-                            <TableHead className="w-[15%]">Name</TableHead>
-                            <TableHead className="w-[15%]">Contact</TableHead>
-                            <TableHead className="w-[10%]">Location</TableHead>
-                            <TableHead className="w-[15%]">Address</TableHead>
-                            <TableHead className="w-[20%]">Admins</TableHead>
+                            <TableHead className="w-[12%]">Logo</TableHead>
+                            <TableHead className="w-[12%]">Name</TableHead>
+                            <TableHead className="w-[12%]">Contact</TableHead>
+                            <TableHead className="w-[8%]">Location</TableHead>
+                            <TableHead className="w-[12%]">Address</TableHead>
+                            <TableHead className="w-[10%]">License</TableHead>
+                            <TableHead className="w-[18%]">Admins</TableHead>
                             <TableHead className="w-[15%]">Actions</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {clients.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                                     No clients found. Click &quot;Add Client&quot; to get started.
                                 </TableCell>
                             </TableRow>
@@ -387,14 +462,16 @@ export function ClientsTable() {
                                 const state = anyClient.state || 'N/A';
                                 const address = anyClient.address || anyClient.fullAddress || 'N/A';
                                 const logo = anyClient.logo || anyClient.logoUrl || '/placeholder.svg';
-
+                                const license = anyClient.license !== undefined ? anyClient.license : 0;
+                                const isLicenseActive = anyClient.isLicenseActive !== undefined ? anyClient.isLicenseActive : false;
                                 // Get the client ID that will be used consistently
                                 const clientId = client._id ?? "";
                                 console.log("Using client ID for this row:", clientId);
+                                const licenseStatus = getLicenseStatus(license, isLicenseActive);
 
                                 return (
                                     <TableRow key={clientId || client.email || idx} className="hover:bg-muted/30">
-                                        <TableCell className="w-[15%]">
+                                        <TableCell className="w-[12%]">
                                             <div className="w-10 h-10 rounded-full overflow-hidden bg-muted flex items-center justify-center">
                                                 <Image
                                                     src={logo}
@@ -405,10 +482,10 @@ export function ClientsTable() {
                                                 />
                                             </div>
                                         </TableCell>
-                                        <TableCell className="w-[15%]">
+                                        <TableCell className="w-[12%]">
                                             <div className="font-medium text-foreground">{name}</div>
                                         </TableCell>
-                                        <TableCell className="w-[15%]">
+                                        <TableCell className="w-[12%]">
                                             <div className="space-y-1">
                                                 <div className="flex items-center gap-2 text-sm">
                                                     <Mail className="h-3 w-3 text-muted-foreground" />
@@ -420,7 +497,7 @@ export function ClientsTable() {
                                                 </div>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="w-[10%]">
+                                        <TableCell className="w-[8%]">
                                             <div className="flex items-center gap-2 text-sm">
                                                 <MapPin className="h-3 w-3 text-muted-foreground" />
                                                 <span className="text-muted-foreground">
@@ -428,7 +505,7 @@ export function ClientsTable() {
                                                 </span>
                                             </div>
                                         </TableCell>
-                                        <TableCell className="w-[15%]">
+                                        <TableCell className="w-[12%]">
                                             <div className="space-y-1">
                                                 <div className="text-sm text-muted-foreground">
                                                     {expandedAddresses.has(clientId) ? address : truncateAddress(address)}
@@ -455,7 +532,26 @@ export function ClientsTable() {
                                                 )}
                                             </div>
                                         </TableCell>
-                                        <TableCell className="w-[20%]">
+                                        <TableCell className="w-[10%]">
+                                            <div className="flex flex-col items-center gap-2">
+                                                <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${licenseStatus.bgColor} ${licenseStatus.color}`}>
+                                                    {licenseStatus.icon === 'shield' && <Shield className="h-3 w-3 mr-1" />}
+                                                    {licenseStatus.icon === 'clock' && <Clock className="h-3 w-3 mr-1" />}
+                                                    {licenseStatus.icon === 'alert-triangle' && <AlertTriangle className="h-3 w-3 mr-1" />}
+                                                    {licenseStatus.text}
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="text-xs px-2 py-1 h-6"
+                                                    onClick={() => handleOpenLicenseDialog(clientId, name, license)}
+                                                >
+                                                    <Clock className="h-3 w-3 mr-1" />
+                                                    Manage
+                                                </Button>
+                                            </div>
+                                        </TableCell>
+                                        <TableCell className="w-[18%]">
                                             <div className="space-y-2">
                                                 {!client.adminsLoaded ? (
                                                     <Button
@@ -630,6 +726,20 @@ export function ClientsTable() {
                     )}
                 </DialogContent>
             </Dialog>
+
+            {/* License Management Dialog */}
+            {licenseClientId && (
+                <LicenseForm
+                    isOpen={isLicenseDialogOpen}
+                    onClose={() => setIsLicenseDialogOpen(false)}
+                    clientId={licenseClientId}
+                    clientName={licenseClientName}
+                    currentLicense={currentLicense}
+                    onLicenseUpdated={(newLicense, isActive, expiryDate) => 
+                        handleLicenseUpdated(licenseClientId, newLicense, isActive, expiryDate)
+                    }
+                />
+            )}
         </div>
     )
 }
