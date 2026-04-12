@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: super-admin
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: super-admin
+  namespace: super-admin
+  labels:
+    app: super-admin
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: super-admin
+  template:
+    metadata:
+      labels:
+        app: super-admin
+    spec:
+      containers:
+      - name: super-admin
+        image: exponentor/super-admin:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        envFrom:
+        - secretRef:
+            name: super-admin-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: super-admin-service
+  namespace: super-admin
+  labels:
+    app: super-admin
+spec:
+  type: ClusterIP
+  ports:
+  - port: 80
+    targetPort: 8000
+    protocol: TCP
+    name: http
+  selector:
+    app: super-admin
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: super-admin-ingress
+  namespace: super-admin
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  tls:
+  - hosts:
+    - admin.xsite.tech  # Change this to your domain
+    secretName: super-admin-tls
+  rules:
+  - host: admin.xsite.tech  # Change this to your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: super-admin-service
+            port:
+              number: 80

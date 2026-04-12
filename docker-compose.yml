@@ -1,0 +1,61 @@
+# ============================================================================
+# Docker Compose Configuration for Super Admin
+# ============================================================================
+#
+# This file defines the super-admin service.
+#
+# ENVIRONMENT VARIABLES:
+#   This file reads variables from the .env.production file in the same directory.
+#   Variables are referenced using ${VARIABLE_NAME} syntax.
+#
+# HOW TO USE:
+#   1. Create .env.production file: cp .env.production.example .env.production
+#   2. Edit .env.production with your values
+#   3. Start services: docker-compose up -d
+#
+# VARIABLE FLOW:
+#   .env.production file → docker-compose.yml → container
+#
+# See SECURITY.md for detailed documentation
+# ============================================================================
+
+version: '3.8'
+
+services:
+  # --------------------------------------------------------------------------
+  # Super Admin Web Application Container (Next.js)
+  # --------------------------------------------------------------------------
+  # Receives from .env.production:
+  #   - PORT (Application port)
+  #   - NEXT_PUBLIC_API_URL (Backend API URL)
+  #   - NEXT_PUBLIC_DOMAIN (Backend domain)
+  # --------------------------------------------------------------------------
+  super-admin:
+    image: exponentor/super-admin:latest
+    container_name: super-admin
+    build:
+      context: .
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+    ports:
+      - '${PORT:-8000}:${PORT:-8000}'
+    environment:
+      NODE_ENV: production
+      PORT: ${PORT:-8000}
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+      NEXT_PUBLIC_DOMAIN: ${NEXT_PUBLIC_DOMAIN}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:${PORT:-8000}', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - super-admin-network
+
+networks:
+  super-admin-network:
+    driver: bridge
