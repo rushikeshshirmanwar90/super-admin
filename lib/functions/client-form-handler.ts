@@ -15,7 +15,6 @@ export interface ClientData {
   logo: string;
 }
 
-// Input change
 export const handleInputChange =
   (
     setFormData: React.Dispatch<React.SetStateAction<ClientData>>,

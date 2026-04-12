@@ -25,7 +25,7 @@ import { ClientData, AdminData } from "@/lib/types"
 import axios from "axios"
 import { errorToast, successToast } from "./toast"
 
-interface ClientDataWithAdmins extends ClientData {
+interface ClientDataWithAdmins extends Omit<ClientData, 'licenseExpiryDate'> {
     admins?: AdminData[]
     adminsLoaded?: boolean
     loadingAdmins?: boolean
@@ -54,7 +54,15 @@ export function ClientsTable() {
             setClients(
                 clients.map((client) =>
                     client._id === editingClient._id
-                        ? { ...newClient, _id: editingClient._id, admins: client.admins, adminsLoaded: client.adminsLoaded }
+                        ? { 
+                            ...newClient, 
+                            _id: editingClient._id, 
+                            admins: client.admins, 
+                            adminsLoaded: client.adminsLoaded,
+                            licenseExpiryDate: typeof newClient.licenseExpiryDate === 'string' 
+                                ? newClient.licenseExpiryDate 
+                                : newClient.licenseExpiryDate?.toISOString()
+                        }
                         : client,
                 ),
             )
@@ -64,7 +72,10 @@ export function ClientsTable() {
             const clientWithAdmins: ClientDataWithAdmins = {
                 ...newClient,
                 admins: [],
-                adminsLoaded: false
+                adminsLoaded: false,
+                licenseExpiryDate: typeof newClient.licenseExpiryDate === 'string' 
+                    ? newClient.licenseExpiryDate 
+                    : newClient.licenseExpiryDate?.toISOString()
             }
             setClients([...clients, clientWithAdmins])
         }
@@ -106,7 +117,13 @@ export function ClientsTable() {
     }
 
     const handleEditClient = (client: ClientData) => {
-        setEditingClient(client)
+        const clientWithAdmins: ClientDataWithAdmins = {
+            ...client,
+            licenseExpiryDate: typeof client.licenseExpiryDate === 'string' 
+                ? client.licenseExpiryDate 
+                : client.licenseExpiryDate?.toISOString()
+        }
+        setEditingClient(clientWithAdmins)
         setIsDialogOpen(true)
     }
 
@@ -369,11 +386,14 @@ export function ClientsTable() {
                 }
 
                 // Map clients with admin properties
-                const clientsWithoutAdmins = clientsData.map((client: ClientData) => ({
+                const clientsWithoutAdmins: ClientDataWithAdmins[] = clientsData.map((client: ClientData) => ({
                     ...client,
                     admins: [],
                     adminsLoaded: false,
-                    loadingAdmins: false
+                    loadingAdmins: false,
+                    licenseExpiryDate: typeof client.licenseExpiryDate === 'string' 
+                        ? client.licenseExpiryDate 
+                        : client.licenseExpiryDate?.toISOString()
                 }))
 
                 console.log("Final clients to set:", clientsWithoutAdmins)
@@ -540,15 +560,44 @@ export function ClientsTable() {
                                                     {licenseStatus.icon === 'alert-triangle' && <AlertTriangle className="h-3 w-3 mr-1" />}
                                                     {licenseStatus.text}
                                                 </div>
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="text-xs px-2 py-1 h-6"
-                                                    onClick={() => handleOpenLicenseDialog(clientId, name, license)}
-                                                >
-                                                    <Clock className="h-3 w-3 mr-1" />
-                                                    Manage
-                                                </Button>
+                                                <div className="flex gap-1">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="text-xs px-2 py-1 h-6"
+                                                        onClick={() => handleOpenLicenseDialog(clientId, name, license)}
+                                                    >
+                                                        <Clock className="h-3 w-3 mr-1" />
+                                                        Manage
+                                                    </Button>
+                                                    {license !== -1 && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="text-xs px-2 py-1 h-6 border-green-200 hover:bg-green-50 text-green-700"
+                                                            onClick={() => {
+                                                                // Quick action to set lifetime
+                                                                if (confirm(`Grant lifetime access to ${name}?`)) {
+                                                                    handleLicenseUpdated(clientId, -1, true, undefined)
+                                                                    // Also update via API
+                                                                    axios.put(`${process.env.NEXT_PUBLIC_DOMAIN}/api/license`, {
+                                                                        clientId,
+                                                                        licenseValue: 1,
+                                                                        licenseUnit: 'lifetime'
+                                                                    }).then(() => {
+                                                                        successToast('Lifetime access granted!')
+                                                                    }).catch(err => {
+                                                                        errorToast('Failed to grant lifetime access')
+                                                                        console.error(err)
+                                                                    })
+                                                                }
+                                                            }}
+                                                            title="Grant Lifetime Access"
+                                                        >
+                                                            <Shield className="h-3 w-3" />
+                                                        </Button>
+                                                    )}
+                                                </div>
                                             </div>
                                         </TableCell>
                                         <TableCell className="w-[18%]">

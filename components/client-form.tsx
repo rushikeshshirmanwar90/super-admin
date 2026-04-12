@@ -25,7 +25,7 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
     const [formData, setFormData] = useState<ClientData>(
         initialData ?? {
             name: "",
-            phoneNumber: "",
+            phoneNumber: 0,
             email: "",
             city: "",
             state: "",
@@ -159,7 +159,7 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
             // Reset form after successful submission
             setFormData({
                 name: "",
-                phoneNumber: "",
+                phoneNumber: 0,
                 email: "",
                 city: "",
                 state: "",
