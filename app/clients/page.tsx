@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Mail, Phone, MapPin, Calendar, Building2, Plus, MoreVertical, Pencil, Trash2, Search } from 'lucide-react'
+import { Mail, Phone, MapPin, Calendar, Building2, Plus, MoreVertical, Pencil, Trash2, Search, Key, Loader2 } from 'lucide-react'
 import { clientAPI } from '@/lib/api'
 import { Client } from '@/lib/types'
 import Link from 'next/link'
@@ -15,6 +15,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { toast } from 'react-toastify'
 
 const ClientsPage = () => {
@@ -22,6 +31,15 @@ const ClientsPage = () => {
   const [filteredClients, setFilteredClients] = useState<Client[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  
+  // License management state
+  const [isLicenseDialogOpen, setIsLicenseDialogOpen] = useState(false)
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+  const [licenseAction, setLicenseAction] = useState<'add' | 'replace'>('add')
+  const [licenseValue, setLicenseValue] = useState<number>(1)
+  const [licenseUnit, setLicenseUnit] = useState<'days' | 'months' | 'years'>('days')
+  const [isLifetime, setIsLifetime] = useState(false)
+  const [isUpdatingLicense, setIsUpdatingLicense] = useState(false)
 
   useEffect(() => {
     fetchClients()
@@ -85,6 +103,68 @@ const ClientsPage = () => {
       .join('')
       .toUpperCase()
       .slice(0, 2)
+  }
+
+  const calculateLicenseDays = (value: number, unit: 'days' | 'months' | 'years'): number => {
+    if (unit === 'months') return value * 31
+    if (unit === 'years') return value * 365
+    return value
+  }
+
+  const handleManageLicense = (client: Client) => {
+    setSelectedClient(client)
+    setLicenseAction('add')
+    setLicenseValue(1)
+    setLicenseUnit('days')
+    setIsLifetime(client.license === -1)
+    setIsLicenseDialogOpen(true)
+  }
+
+  const handleUpdateLicense = async () => {
+    if (!selectedClient?._id) return
+
+    setIsUpdatingLicense(true)
+    try {
+      let newLicenseDays: number
+      
+      if (isLifetime) {
+        newLicenseDays = -1
+      } else {
+        const daysToAdd = calculateLicenseDays(licenseValue, licenseUnit)
+        const currentLicense = selectedClient.license || 0
+        
+        newLicenseDays = licenseAction === 'add' 
+          ? currentLicense + daysToAdd 
+          : daysToAdd
+      }
+
+      await clientAPI.update(selectedClient._id, { license: newLicenseDays })
+      
+      toast.success(`License ${isLifetime ? 'set to lifetime' : licenseAction === 'add' ? 'added' : 'replaced'} successfully`)
+      setIsLicenseDialogOpen(false)
+      fetchClients()
+    } catch (error) {
+      console.error('Error updating license:', error)
+      toast.error('Failed to update license')
+    } finally {
+      setIsUpdatingLicense(false)
+    }
+  }
+
+  const getTotalLicenseDays = (): number => {
+    if (isLifetime) return -1
+    
+    const daysToModify = calculateLicenseDays(licenseValue, licenseUnit)
+    const currentLicense = selectedClient?.license || 0
+    
+    return licenseAction === 'add' 
+      ? currentLicense + daysToModify 
+      : daysToModify
+  }
+
+  const formatLicenseDuration = (days: number | undefined): string => {
+    if (days === -1) return 'Lifetime'
+    return `${days || 0} days`
   }
 
   if (isLoading) {
@@ -169,6 +249,13 @@ const ClientsPage = () => {
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
+                        <DropdownMenuItem 
+                          onClick={() => handleManageLicense(client)}
+                          className="cursor-pointer"
+                        >
+                          <Key className="mr-2 h-4 w-4" />
+                          Manage License
+                        </DropdownMenuItem>
                         <DropdownMenuItem asChild>
                           <Link href={`/clients/edit/${client._id}`} className="cursor-pointer">
                             <Pencil className="mr-2 h-4 w-4" />
@@ -208,18 +295,37 @@ const ClientsPage = () => {
                     </div>
                   </div>
 
-                  <div className="border-t border-slate-200 pt-4">
+                  <div className="border-t border-slate-200 pt-4 space-y-3">
+                    {/* License Information */}
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-xs font-medium text-slate-600">License Duration</span>
+                        <Badge 
+                          variant={client.license === -1 ? "default" : "outline"} 
+                          className={client.license === -1 ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white" : "text-xs"}
+                        >
+                          {formatLicenseDuration(client.license)}
+                        </Badge>
+                      </div>
+                      {client.licenseExpiryDate && client.license !== -1 && (
+                        <div className="flex items-center gap-1 text-xs text-slate-500">
+                          <Building2 className="w-3 h-3" />
+                          <span>Expires {formatDate(client.licenseExpiryDate)}</span>
+                        </div>
+                      )}
+                      {client.license === -1 && (
+                        <div className="flex items-center gap-1 text-xs text-purple-600">
+                          <Building2 className="w-3 h-3" />
+                          <span className="font-medium">Never Expires</span>
+                        </div>
+                      )}
+                    </div>
+
                     <div className="flex items-center justify-between text-xs text-slate-500">
                       <div className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         <span>Joined {formatDate(client.createdAt)}</span>
                       </div>
-                      {client.licenseExpiryDate && (
-                        <div className="flex items-center gap-1">
-                          <Building2 className="w-3 h-3" />
-                          <span>Expires {formatDate(client.licenseExpiryDate)}</span>
-                        </div>
-                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -228,6 +334,189 @@ const ClientsPage = () => {
           </div>
         )}
       </div>
+
+      {/* License Management Dialog */}
+      <Dialog open={isLicenseDialogOpen} onOpenChange={setIsLicenseDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Manage License - {selectedClient?.name}</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Current License Info */}
+            <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-slate-700">Current License</span>
+                <Badge 
+                  variant={selectedClient?.license === -1 ? "default" : "outline"} 
+                  className={selectedClient?.license === -1 ? "bg-gradient-to-r from-purple-500 to-pink-500 text-white" : "text-sm"}
+                >
+                  {formatLicenseDuration(selectedClient?.license)}
+                </Badge>
+              </div>
+              {selectedClient?.licenseExpiryDate && selectedClient?.license !== -1 && (
+                <p className="text-xs text-slate-500 mt-2">
+                  Expires: {formatDate(selectedClient.licenseExpiryDate)}
+                </p>
+              )}
+              {selectedClient?.license === -1 && (
+                <p className="text-xs text-purple-600 mt-2 font-medium">
+                  Never Expires - Lifetime Access
+                </p>
+              )}
+            </div>
+
+            {/* Action Selection */}
+            <div className="space-y-2">
+              <Label>Action</Label>
+              <div className="grid grid-cols-3 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLicenseAction('add')
+                    setIsLifetime(false)
+                  }}
+                  disabled={selectedClient?.license === -1}
+                  className={`px-4 py-3 rounded-lg border-2 transition-all ${
+                    licenseAction === 'add' && !isLifetime
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 hover:border-slate-300'
+                  } ${selectedClient?.license === -1 ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <div className="font-medium text-sm">Add License</div>
+                  <div className="text-xs text-slate-500 mt-1">Extend current</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLicenseAction('replace')
+                    setIsLifetime(false)
+                  }}
+                  className={`px-4 py-3 rounded-lg border-2 transition-all ${
+                    licenseAction === 'replace' && !isLifetime
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="font-medium text-sm">Replace</div>
+                  <div className="text-xs text-slate-500 mt-1">Set new duration</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsLifetime(true)
+                    setLicenseAction('replace')
+                  }}
+                  className={`px-4 py-3 rounded-lg border-2 transition-all ${
+                    isLifetime
+                      ? 'border-purple-500 bg-gradient-to-br from-purple-50 to-pink-50 text-purple-700'
+                      : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="font-medium text-sm">Lifetime</div>
+                  <div className="text-xs text-slate-500 mt-1">Never expires</div>
+                </button>
+              </div>
+              {selectedClient?.license === -1 && (
+                <p className="text-xs text-amber-600 mt-2">
+                  ⚠️ Client already has lifetime access. You can only replace it.
+                </p>
+              )}
+            </div>
+
+            {/* License Duration Input */}
+            {!isLifetime && (
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="licenseValue">Duration</Label>
+                  <Input
+                    id="licenseValue"
+                    type="number"
+                    min="1"
+                    value={licenseValue}
+                    onChange={(e) => setLicenseValue(Number(e.target.value))}
+                    placeholder="Enter duration"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="licenseUnit">Unit</Label>
+                  <select
+                    id="licenseUnit"
+                    value={licenseUnit}
+                    onChange={(e) => setLicenseUnit(e.target.value as 'days' | 'months' | 'years')}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="days">Days</option>
+                    <option value="months">Months (31 days)</option>
+                    <option value="years">Years (365 days)</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Preview */}
+            <div className={`rounded-lg p-4 border-2 ${
+              isLifetime 
+                ? 'bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200' 
+                : 'bg-blue-50 border-blue-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-slate-700">
+                    {isLifetime 
+                      ? 'Lifetime Access' 
+                      : licenseAction === 'add' ? 'New Total License' : 'New License Duration'
+                    }
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isLifetime 
+                      ? 'Client will have unlimited access'
+                      : licenseAction === 'add' 
+                        ? `Current (${selectedClient?.license || 0}) + New (${calculateLicenseDays(licenseValue, licenseUnit)})`
+                        : `Replacing current license`
+                    }
+                  </p>
+                </div>
+                <Badge className={`text-lg px-3 py-1 ${
+                  isLifetime 
+                    ? 'bg-gradient-to-r from-purple-500 to-pink-500' 
+                    : ''
+                }`}>
+                  {isLifetime ? '∞ Lifetime' : `${getTotalLicenseDays()} days`}
+                </Badge>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsLicenseDialogOpen(false)}
+              disabled={isUpdatingLicense}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleUpdateLicense}
+              disabled={isUpdatingLicense || (!isLifetime && licenseValue < 1)}
+            >
+              {isUpdatingLicense ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Updating...
+                </>
+              ) : isLifetime ? (
+                'Set Lifetime Access'
+              ) : (
+                `${licenseAction === 'add' ? 'Add' : 'Replace'} License`
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }

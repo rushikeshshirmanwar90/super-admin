@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { ArrowLeft, ImagePlus, Loader2 } from 'lucide-react'
 import Link from 'next/link'
@@ -21,14 +22,49 @@ const NewClientPage = () => {
     city: '',
     state: '',
     address: '',
-    password: '',
     licenseDays: '',
     logo: '',
   })
+  const [licenseValue, setLicenseValue] = useState<number>(1)
+  const [licenseUnit, setLicenseUnit] = useState<'days' | 'months' | 'years'>('days')
+  const [isLifetime, setIsLifetime] = useState(false)
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  // Calculate license days based on value and unit
+  const calculateLicenseDays = (value: number, unit: 'days' | 'months' | 'years'): number => {
+    if (unit === 'months') return value * 31
+    if (unit === 'years') return value * 365
+    return value
+  }
+
+  const handleLicenseValueChange = (value: number) => {
+    setLicenseValue(value)
+    if (!isLifetime) {
+      const days = calculateLicenseDays(value, licenseUnit)
+      setFormData(prev => ({ ...prev, licenseDays: days.toString() }))
+    }
+  }
+
+  const handleLicenseUnitChange = (unit: 'days' | 'months' | 'years') => {
+    setLicenseUnit(unit)
+    if (!isLifetime) {
+      const days = calculateLicenseDays(licenseValue, unit)
+      setFormData(prev => ({ ...prev, licenseDays: days.toString() }))
+    }
+  }
+
+  const handleLifetimeToggle = (lifetime: boolean) => {
+    setIsLifetime(lifetime)
+    if (lifetime) {
+      setFormData(prev => ({ ...prev, licenseDays: '-1' }))
+    } else {
+      const days = calculateLicenseDays(licenseValue, licenseUnit)
+      setFormData(prev => ({ ...prev, licenseDays: days.toString() }))
+    }
   }
 
   const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,9 +118,8 @@ const NewClientPage = () => {
         address: formData.address,
       }
 
-      if (formData.password) submitData.password = formData.password
       if (formData.logo) submitData.logo = formData.logo
-      if (formData.licenseDays) submitData.licenseDays = Number(formData.licenseDays)
+      if (formData.licenseDays) submitData.license = Number(formData.licenseDays)
 
       await clientAPI.create(submitData)
       toast.success('Client created successfully!')
@@ -163,19 +198,6 @@ const NewClientPage = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Password
-                  </label>
-                  <input
-                    type="password"
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     City <span className="text-red-500">*</span>
                   </label>
                   <input
@@ -201,20 +223,6 @@ const NewClientPage = () => {
                     className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    License Days
-                  </label>
-                  <input
-                    type="number"
-                    name="licenseDays"
-                    value={formData.licenseDays}
-                    onChange={handleChange}
-                    placeholder="e.g., 365"
-                    className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
               </div>
 
               <div>
@@ -230,6 +238,77 @@ const NewClientPage = () => {
                   className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-0 shadow-lg">
+            <CardHeader>
+              <CardTitle>License Duration</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Lifetime Toggle */}
+              <div className="flex items-center justify-between p-4 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <input
+                    type="checkbox"
+                    id="lifetimeAccess"
+                    checked={isLifetime}
+                    onChange={(e) => handleLifetimeToggle(e.target.checked)}
+                    className="w-5 h-5 text-purple-600 border-purple-300 rounded focus:ring-purple-500"
+                  />
+                  <label htmlFor="lifetimeAccess" className="cursor-pointer">
+                    <div className="font-semibold text-purple-700">Lifetime Access</div>
+                    <div className="text-xs text-purple-600">Grant unlimited access with no expiration</div>
+                  </label>
+                </div>
+                {isLifetime && (
+                  <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                    ∞ Lifetime
+                  </Badge>
+                )}
+              </div>
+
+              {!isLifetime && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Duration <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={licenseValue}
+                        onChange={(e) => handleLicenseValueChange(Number(e.target.value))}
+                        required
+                        placeholder="Enter duration"
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-2">
+                        Unit <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={licenseUnit}
+                        onChange={(e) => handleLicenseUnitChange(e.target.value as 'days' | 'months' | 'years')}
+                        className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="days">Days</option>
+                        <option value="months">Months (31 days each)</option>
+                        <option value="years">Years (365 days each)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <p className="text-sm text-slate-700">
+                      Total License Duration: <span className="font-semibold text-blue-700">{formData.licenseDays || 0} days</span>
+                    </p>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
 

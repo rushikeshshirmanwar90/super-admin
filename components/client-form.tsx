@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Upload, X, Loader2, Mail, CheckCircle } from "lucide-react"
 import { handleImageUpload, removeImage } from "@/lib/image-upload"
 import Image from "next/image"
@@ -31,12 +32,17 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
             state: "",
             address: "",
             logo: "",
+            license: 0,
         }
     )
 
     const [logoImages, setLogoImages] = useState<string[]>([])
     const [isUploading, setIsUploading] = useState(false)
     const [isSubmitting, setIsSubmitting] = useState(false)
+
+    // License state
+    const [licenseValue, setLicenseValue] = useState<number>(1)
+    const [licenseUnit, setLicenseUnit] = useState<"days" | "months" | "years">("days")
 
     const [isEmailVerified, setIsEmailVerified] = useState(false)
     const [showOtpInput, setShowOtpInput] = useState(false)
@@ -125,8 +131,38 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
     useEffect(() => {
         if (initialData) {
             setLogoImages(initialData.logo ? [initialData.logo] : [])
+            
+            // Calculate license unit from existing license days
+            if (initialData.license) {
+                if (initialData.license % 365 === 0) {
+                    setLicenseValue(initialData.license / 365)
+                    setLicenseUnit("years")
+                } else if (initialData.license % 31 === 0) {
+                    setLicenseValue(initialData.license / 31)
+                    setLicenseUnit("months")
+                } else {
+                    setLicenseValue(initialData.license)
+                    setLicenseUnit("days")
+                }
+            }
         }
     }, [initialData])
+
+    // Calculate license in days whenever value or unit changes
+    useEffect(() => {
+        let daysCount = licenseValue
+        
+        if (licenseUnit === "months") {
+            daysCount = licenseValue * 31
+        } else if (licenseUnit === "years") {
+            daysCount = licenseValue * 365
+        }
+        
+        setFormData((prev) => ({
+            ...prev,
+            license: daysCount,
+        }))
+    }, [licenseValue, licenseUnit])
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -165,8 +201,11 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
                 state: "",
                 address: "",
                 logo: "",
+                license: 0,
             })
             setLogoImages([])
+            setLicenseValue(1)
+            setLicenseUnit("days")
             setIsEmailVerified(false)
             setShowOtpInput(false)
             setOtp("")
@@ -340,6 +379,53 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
                                 rows={3}
                             />
                         </div>
+
+                        {/* License Section */}
+                        <Card className="border-2">
+                            <CardHeader>
+                                <CardTitle className="text-lg">License Duration</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="licenseValue">Duration *</Label>
+                                        <Input
+                                            id="licenseValue"
+                                            name="licenseValue"
+                                            type="number"
+                                            min="1"
+                                            value={licenseValue}
+                                            onChange={(e) => setLicenseValue(Number(e.target.value))}
+                                            required
+                                            placeholder="Enter duration"
+                                        />
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="licenseUnit">Unit *</Label>
+                                        <Select
+                                            value={licenseUnit}
+                                            onValueChange={(value: "days" | "months" | "years") => setLicenseUnit(value)}
+                                        >
+                                            <SelectTrigger id="licenseUnit">
+                                                <SelectValue placeholder="Select unit" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="days">Days</SelectItem>
+                                                <SelectItem value="months">Months (31 days each)</SelectItem>
+                                                <SelectItem value="years">Years (365 days each)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+                                </div>
+
+                                <div className="mt-4 p-3 bg-muted rounded-md">
+                                    <p className="text-sm text-muted-foreground">
+                                        Total License Duration: <span className="font-semibold text-foreground">{formData.license} days</span>
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
 
                         {/* Logo Upload */}
                         <div className="space-y-2">
