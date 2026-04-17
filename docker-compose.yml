@@ -46,7 +46,7 @@ services:
       HOSTNAME: 0.0.0.0
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
       NEXT_PUBLIC_DOMAIN: ${NEXT_PUBLIC_DOMAIN}
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD", "node", "-e", "require('http').get('http://localhost:${PORT:-8000}', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
       interval: 30s
