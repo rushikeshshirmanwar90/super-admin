@@ -59,7 +59,7 @@ const ClientsPage = () => {
 
   // View admins state - Simple and clean
   const [isViewAdminsDialogOpen, setIsViewAdminsDialogOpen] = useState(false)
-  const [clientAdmins, setClientAdmins] = useState([]) // Simple array
+  const [clientAdmins, setClientAdmins] = useState<any[]>([]) // Properly typed array
   const [isLoadingClientAdmins, setIsLoadingClientAdmins] = useState(false)
 
   // Copy client ID state
