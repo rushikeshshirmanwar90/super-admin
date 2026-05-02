@@ -68,15 +68,32 @@ export const clientAPI = {
   delete: (id: string) => api.delete(`/api/client?id=${id}`),
 };
 
+// Admin API
+export const adminAPI = {
+  getAll: () => api.get('/api/admin'),
+  getById: (id: string) => api.get(`/api/admin?id=${id}`),
+  create: (data: any) => api.post('/api/admin', data),
+  update: (id: string, data: any) => api.put(`/api/admin?id=${id}`, data),
+  delete: (id: string) => api.delete(`/api/admin?id=${id}`),
+  getByClientId: (clientId: string) => api.get(`/api/admin?clientId=${clientId}`),
+};
+
 // Stats API
 export const statsAPI = {
   getDashboard: async () => {
-    const response = await clientAPI.getAll();
-    const clients = response.data.data || []; // API returns { success: true, data: [...] }
+    const [clientsResponse, adminsResponse] = await Promise.all([
+      clientAPI.getAll(),
+      adminAPI.getAll().catch(() => ({ data: { data: [] } })) // Handle if admin API doesn't exist yet
+    ]);
+    
+    const clients = clientsResponse.data.data || [];
+    const admins = adminsResponse.data.data || [];
+    
     return {
       totalClients: clients.length || 0,
       activeClients: clients.filter((c: any) => c.isLicenseActive)?.length || 0,
       expiredLicenses: clients.filter((c: any) => !c.isLicenseActive)?.length || 0,
+      totalAdmins: admins.length || 0,
     };
   },
 };

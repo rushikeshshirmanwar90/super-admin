@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, UserCheck, UserX, TrendingUp, Calendar, Building2, AlertCircle } from 'lucide-react'
-import { clientAPI } from '@/lib/api'
+import { Users, UserCheck, UserX, TrendingUp, Calendar, Building2, AlertCircle, UserCircle2 } from 'lucide-react'
+import { statsAPI } from '@/lib/api'
 import { Client } from '@/lib/types'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ const Page = () => {
     totalClients: 0,
     activeClients: 0,
     expiredLicenses: 0,
+    totalAdmins: 0,
     expiringThisMonth: 0,
   })
   const [recentClients, setRecentClients] = useState<Client[]>([])
@@ -28,15 +29,16 @@ const Page = () => {
   const fetchDashboardData = async () => {
     try {
       setIsLoading(true)
+      const dashboardStats = await statsAPI.getDashboard()
+      
+      // Also fetch client details for recent and expiring lists
+      const { clientAPI } = await import('@/lib/api')
       const response = await clientAPI.getAll()
-      // API returns { success: true, data: [...] }
       const clients: Client[] = response.data.data || []
 
       const now = new Date()
       const thirtyDaysFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
-      const active = clients.filter(c => c.isLicenseActive)
-      const expired = clients.filter(c => !c.isLicenseActive)
       const expiring = clients.filter(c => {
         if (!c.licenseExpiryDate) return false
         const expiryDate = new Date(c.licenseExpiryDate)
@@ -44,9 +46,7 @@ const Page = () => {
       })
 
       setStats({
-        totalClients: clients.length,
-        activeClients: active.length,
-        expiredLicenses: expired.length,
+        ...dashboardStats,
         expiringThisMonth: expiring.length,
       })
 
@@ -128,14 +128,14 @@ const Page = () => {
             </CardContent>
           </Card> 
 
-          <Card className="border-0 shadow-lg bg-gradient-to-br from-red-500 to-red-600 text-white">
+          <Card className="border-0 shadow-lg bg-gradient-to-br from-purple-500 to-purple-600 text-white">
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Expired Licenses</CardTitle>
-              <UserX className="h-5 w-5 opacity-80" />
+              <CardTitle className="text-sm font-medium">Total Admins</CardTitle>
+              <UserCircle2 className="h-5 w-5 opacity-80" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold">{stats.expiredLicenses}</div>
-              <p className="text-xs opacity-80 mt-1">Need renewal</p>
+              <div className="text-3xl font-bold">{stats.totalAdmins}</div>
+              <p className="text-xs opacity-80 mt-1">Client administrators</p>
             </CardContent>
           </Card>
 
