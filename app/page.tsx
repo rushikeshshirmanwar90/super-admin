@@ -180,8 +180,8 @@ const Page = () => {
                         <p className="font-medium text-slate-900 truncate">{client.name}</p>
                         <p className="text-sm text-slate-500 truncate">{client.email}</p>
                       </div>
-                      <Badge variant={client.isLicenseActive ? "default" : "destructive"}>
-                        {client.isLicenseActive ? "Active" : "Expired"}
+                      <Badge variant={client.license !== 0 ? "default" : "destructive"}>
+                        {client.license !== 0 ? "Active" : "Expired"}
                       </Badge>
                     </div>
                   ))

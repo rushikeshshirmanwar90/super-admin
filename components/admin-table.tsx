@@ -39,8 +39,9 @@ export function AdminTable({ clientId }: AdminTableProps) {
         const loadAdmins = async () => {
             setIsLoading(true)
             try {
+                // Get all admins and filter by clientId on frontend
                 const res = await axios.get(
-                    `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?clientId=${clientId}`
+                    `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin`
                 )
 
                 console.log("Admin API Response:", res.data)
@@ -57,6 +58,9 @@ export function AdminTable({ clientId }: AdminTableProps) {
                 } else if (Array.isArray(res.data)) {
                     adminsData = res.data
                 }
+
+                // Filter admins by clientId
+                adminsData = adminsData.filter((admin: any) => admin.clientId === clientId)
 
                 setAdmins(adminsData)
             } catch (error) {
@@ -94,8 +98,19 @@ export function AdminTable({ clientId }: AdminTableProps) {
 
     const handleDeleteAdmin = async (adminId: string) => {
         try {
-            const res = await axios.delete(
+            // First get the admin to get their email
+            const adminRes = await axios.get(
                 `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?id=${adminId}`
+            )
+            const adminEmail = adminRes.data.data?.email
+            
+            if (!adminEmail) {
+                errorToast("Could not find admin email")
+                return
+            }
+            
+            const res = await axios.delete(
+                `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?email=${adminEmail}`
             )
 
             if (res.status === 200) {

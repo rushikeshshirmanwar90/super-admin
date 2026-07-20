@@ -88,7 +88,7 @@ export function ClientsTable() {
             if (!client) return
 
             const res = await axios.delete(
-                `${process.env.NEXT_PUBLIC_DOMAIN}/api/client?email=${client.email}`
+                `${process.env.NEXT_PUBLIC_DOMAIN}/api/clients?email=${client.email}`
             )
 
             if (res.status === 200) {
@@ -147,10 +147,13 @@ export function ClientsTable() {
                 )
             )
 
+            // Get all admins and filter by clientId on frontend
             const adminRes = await axios.get(
-                `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?clientId=${clientId}`
+                `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin`
             )
-            const admins = adminRes.data.data || []
+            const allAdmins = adminRes.data.data || []
+            // Filter admins by clientId
+            const admins = Array.isArray(allAdmins) ? allAdmins.filter((admin: any) => admin.clientId === clientId) : []
 
             setClients((prev) =>
                 prev.map((client) =>
@@ -238,8 +241,19 @@ export function ClientsTable() {
     // Delete admin
     const handleDeleteAdmin = async (adminId: string, clientId: string) => {
         try {
-            const res = await axios.delete(
+            // First get the admin to get their email
+            const adminRes = await axios.get(
                 `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?id=${adminId}`
+            )
+            const adminEmail = adminRes.data.data?.email
+            
+            if (!adminEmail) {
+                errorToast("Could not find admin email")
+                return
+            }
+            
+            const res = await axios.delete(
+                `${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?email=${adminEmail}`
             )
 
             if (res.status === 200) {
@@ -303,7 +317,8 @@ export function ClientsTable() {
                 icon: "shield"
             }
         }
-        if (license === 0 || !isActive) {
+        // Simplified logic: only check if license is 0 (ignore isActive)
+        if (license === 0) {
             return {
                 text: "Expired",
                 color: "text-red-600",
@@ -355,8 +370,8 @@ export function ClientsTable() {
     useEffect(() => {
         const getClientData = async () => {
             try {
-                // Try /api/client first (without 's')
-                const res = await axios.get(`${process.env.NEXT_PUBLIC_DOMAIN}/api/client`)
+                // Use correct endpoint: /api/clients (plural)
+                const res = await axios.get(`${process.env.NEXT_PUBLIC_DOMAIN}/api/clients`)
 
                 console.log("Full API Response:", res.data)
 

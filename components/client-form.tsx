@@ -170,24 +170,30 @@ export function ClientForm({ onClientAdded, initialData = null }: ClientFormProp
         try {
             let res
 
+            // Prepare data with licenseDays for API
+            const submitData = {
+                ...formData,
+                licenseDays: formData.license // API expects licenseDays, not license
+            }
+
             if (initialData?._id) {
                 // Update existing client
                 res = await axios.put(
-                    `${process.env.NEXT_PUBLIC_DOMAIN}/api/client?id=${initialData._id}`,
-                    formData
+                    `${process.env.NEXT_PUBLIC_DOMAIN}/api/clients?id=${initialData._id}`,
+                    submitData
                 )
                 successToast("Client updated successfully!")
             } else {
                 // Create new client
                 res = await axios.post(
-                    `${process.env.NEXT_PUBLIC_DOMAIN}/api/client`,
-                    formData
+                    `${process.env.NEXT_PUBLIC_DOMAIN}/api/clients`,
+                    submitData
                 )
                 successToast("Client added successfully!")
             }
 
             // Use response data if available, otherwise use formData
-            const clientData = res.data?.clientData || res.data?.client || res.data || formData
+            const clientData = res.data?.clientData || res.data?.client || res.data?.data || formData
 
             // Call parent handler with the response data
             onClientAdded(clientData)

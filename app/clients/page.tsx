@@ -9,6 +9,7 @@ import { Mail, Phone, MapPin, Calendar, Building2, Plus, MoreVertical, Pencil, T
 import { clientAPI, adminAPI } from '@/lib/api'
 import { Client } from '@/lib/types'
 import Link from 'next/link'
+import axios from 'axios'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -45,6 +46,7 @@ const ClientsPage = () => {
   // Add admin state
   const [isAddAdminDialogOpen, setIsAddAdminDialogOpen] = useState(false)
   const [isCreatingAdmin, setIsCreatingAdmin] = useState(false)
+  const [editingAdminId, setEditingAdminId] = useState<string | null>(null) // Track which admin is being edited
   const [adminFormData, setAdminFormData] = useState({
     firstName: '',
     lastName: '',
@@ -87,12 +89,62 @@ const ClientsPage = () => {
       setIsLoading(true)
       const [clientsResponse, adminsResponse] = await Promise.all([
         clientAPI.getAll(),
-        adminAPI.getAll().catch(() => ({ data: { data: [] } })) // Handle if admin API doesn't exist yet
+        adminAPI.getAll().catch(() => ({ data: { success: true, data: [] } })) // Handle if admin API doesn't exist yet
       ])
       
-      // API returns { success: true, data: [...] }
-      const clientData = clientsResponse.data.data || []
-      const adminData = adminsResponse.data.data || []
+      console.log('📊 Clients Page API Responses:', {
+        clientsResponse: clientsResponse.data,
+        adminsResponse: adminsResponse.data,
+      });
+      
+      // Handle different response structures
+      let clientData: Client[] = [];
+      let adminData: any[] = [];
+      
+      // Extract clients data
+      if (clientsResponse.data.success) {
+        if (Array.isArray(clientsResponse.data.data)) {
+          clientData = clientsResponse.data.data;
+        } else if (clientsResponse.data.data && Array.isArray(clientsResponse.data.data.clients)) {
+          clientData = clientsResponse.data.data.clients;
+        } else if (clientsResponse.data.data && typeof clientsResponse.data.data === 'object') {
+          // If data is an object, try to extract array from it
+          const values = Object.values(clientsResponse.data.data);
+          const arrayValue = values.find(item => Array.isArray(item));
+          clientData = Array.isArray(arrayValue) ? arrayValue : [];
+        }
+      }
+      
+      // Extract admins data
+      if (adminsResponse.data.success) {
+        if (Array.isArray(adminsResponse.data.data)) {
+          adminData = adminsResponse.data.data;
+        } else if (adminsResponse.data.data && Array.isArray(adminsResponse.data.data.admins)) {
+          adminData = adminsResponse.data.data.admins;
+        } else if (adminsResponse.data.data && typeof adminsResponse.data.data === 'object') {
+          // If data is an object, try to extract array from it
+          const values = Object.values(adminsResponse.data.data);
+          const arrayValue = values.find(item => Array.isArray(item));
+          adminData = Array.isArray(arrayValue) ? arrayValue : [];
+        }
+      }
+      
+      // Ensure arrays
+      if (!Array.isArray(clientData)) {
+        console.warn('⚠️ Client data is not an array:', typeof clientData, clientData);
+        clientData = [];
+      }
+      
+      if (!Array.isArray(adminData)) {
+        console.warn('⚠️ Admin data is not an array:', typeof adminData, adminData);
+        adminData = [];
+      }
+      
+      console.log('📊 Extracted clients page data:', {
+        clientsCount: clientData.length,
+        adminsCount: adminData.length,
+        clientsSample: clientData[0],
+      });
       
       setClients(clientData)
       setAdmins(adminData)
@@ -100,6 +152,10 @@ const ClientsPage = () => {
     } catch (error) {
       console.error('Error fetching clients:', error)
       toast.error('Failed to fetch clients')
+      // Set empty arrays on error
+      setClients([])
+      setAdmins([])
+      setFilteredClients([])
     } finally {
       setIsLoading(false)
     }
@@ -165,6 +221,7 @@ const ClientsPage = () => {
 
   const handleAddAdmin = (client: Client) => {
     setSelectedClient(client)
+    setEditingAdminId(null) // Clear editing state
     setAdminFormData({
       firstName: '',
       lastName: '',
@@ -177,52 +234,45 @@ const ClientsPage = () => {
     setIsAddAdminDialogOpen(true)
   }
 
-  const handleViewAdmins = (client: Client) => {
+  const handleViewAdmins = async (client: Client) => {
     console.log('🔍 Opening admin dialog for client:', client.name)
     setSelectedClient(client)
     setIsViewAdminsDialogOpen(true)
+    setIsLoadingClientAdmins(true)
     
-    // For now, let's just show mock data to test the dialog
-    const mockAdmins = [
-      {
-        _id: 'mock-1',
-        firstName: 'John',
-        lastName: 'Doe',
-        email: 'john@example.com',
-        phoneNumber: '1234567890',
-        clientId: client._id,
-        createdAt: new Date().toISOString()
-      },
-      {
-        _id: 'mock-2',
-        firstName: 'Jane',
-        lastName: 'Smith',
-        email: 'jane@example.com',
-        phoneNumber: '0987654321',
-        clientId: client._id,
-        createdAt: new Date().toISOString()
-      }
-    ]
-    
-    setClientAdmins(mockAdmins)
-    console.log('✅ Set mock admins:', mockAdmins)
+    try {
+      // Fetch real admins from API
+      const response = await adminAPI.getByClientId(client._id!)
+      const adminsData = response.data.data || []
+      
+      console.log('✅ Fetched admins for client:', adminsData)
+      setClientAdmins(Array.isArray(adminsData) ? adminsData : [])
+    } catch (error) {
+      console.error('❌ Error fetching admins:', error)
+      toast.error('Failed to load admins')
+      setClientAdmins([])
+    } finally {
+      setIsLoadingClientAdmins(false)
+    }
   }
 
   const handleDeleteClientAdmin = async (adminId: string, adminName: string) => {
     if (!confirm(`Are you sure you want to delete ${adminName}?`)) return
 
     try {
-      // Check if it's mock data
-      if (adminId.startsWith('mock-')) {
-        console.log('🧪 Deleting mock admin:', adminId)
-        // Remove from local state for mock data
-        setClientAdmins(prev => prev.filter(admin => admin._id !== adminId))
-        toast.success('Mock admin deleted successfully')
+      // Get admin email first
+      const adminResponse = await adminAPI.getById(adminId)
+      const adminEmail = adminResponse.data.data?.email
+      
+      if (!adminEmail) {
+        toast.error('Could not find admin email')
         return
       }
 
-      await adminAPI.delete(adminId)
+      // Delete using email
+      await axios.delete(`${process.env.NEXT_PUBLIC_DOMAIN}/api/admin?email=${adminEmail}`)
       toast.success('Admin deleted successfully')
+      
       // Refresh the admin list
       if (selectedClient) {
         handleViewAdmins(selectedClient)
@@ -233,6 +283,25 @@ const ClientsPage = () => {
       console.error('Error deleting admin:', error)
       toast.error('Failed to delete admin')
     }
+  }
+
+  const handleEditClientAdmin = (admin: any) => {
+    // Close view admins dialog
+    setIsViewAdminsDialogOpen(false)
+    
+    // Set the admin data for editing
+    setAdminFormData({
+      firstName: admin.firstName,
+      lastName: admin.lastName,
+      email: admin.email,
+      phoneNumber: admin.phoneNumber,
+    })
+    
+    // Mark email as verified since it's an existing admin
+    setEmailVerificationStep('verified')
+    
+    // Open add admin dialog in edit mode
+    setIsAddAdminDialogOpen(true)
   }
 
   const handleAdminFormChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -257,7 +326,7 @@ const ClientsPage = () => {
       // Import and use the sendOtp function
       const { sendOtp } = await import('@/lib/functions/send-otp')
       const success = await sendOtp(adminFormData.email, parseInt(code))
-      
+
       if (success) {
         setSentVerificationCode(code)
         toast.success(`Verification code sent to ${adminFormData.email}`)
@@ -311,14 +380,28 @@ const ClientsPage = () => {
 
     setIsCreatingAdmin(true)
     try {
-      const adminData = {
-        ...adminFormData,
-        clientId: selectedClient?._id
+      if (editingAdminId) {
+        // Update existing admin
+        await adminAPI.update(editingAdminId, {
+          firstName: adminFormData.firstName,
+          lastName: adminFormData.lastName,
+          phoneNumber: adminFormData.phoneNumber,
+          // Don't send email for update
+        })
+        toast.success('Admin updated successfully!')
+      } else {
+        // Create new admin
+        const adminData = {
+          ...adminFormData,
+          clientId: selectedClient?._id
+        }
+        
+        await adminAPI.create(adminData)
+        toast.success('Admin created successfully!')
       }
       
-      await adminAPI.create(adminData)
-      toast.success('Admin created successfully!')
       setIsAddAdminDialogOpen(false)
+      setEditingAdminId(null)
       fetchClients() // Refresh to update admin counts
       
       // If view admins dialog was open, refresh it too
@@ -326,8 +409,8 @@ const ClientsPage = () => {
         handleViewAdmins(selectedClient)
       }
     } catch (error: any) {
-      console.error('Error creating admin:', error)
-      toast.error(error.response?.data?.message || 'Failed to create admin')
+      console.error('Error saving admin:', error)
+      toast.error(error.response?.data?.message || `Failed to ${editingAdminId ? 'update' : 'create'} admin`)
     } finally {
       setIsCreatingAdmin(false)
     }
@@ -454,8 +537,8 @@ const ClientsPage = () => {
                       </Avatar>
                       <div>
                         <CardTitle className="text-lg font-semibold text-slate-900">{client.name}</CardTitle>
-                        <Badge variant={client.isLicenseActive ? "default" : "destructive"} className="mt-1">
-                          {client.isLicenseActive ? "Active" : "Expired"}
+                        <Badge variant={client.license !== 0 ? "default" : "destructive"} className="mt-1">
+                          {client.license !== 0 ? "Active" : "Expired"}
                         </Badge>
                       </div>
                     </div>
@@ -792,7 +875,7 @@ const ClientsPage = () => {
       <Dialog open={isAddAdminDialogOpen} onOpenChange={setIsAddAdminDialogOpen}>
         <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
-            <DialogTitle>Add Admin - {selectedClient?.name}</DialogTitle>
+            <DialogTitle>{editingAdminId ? 'Edit' : 'Add'} Admin - {selectedClient?.name}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
@@ -997,10 +1080,10 @@ const ClientsPage = () => {
               {isCreatingAdmin ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating Admin...
+                  {editingAdminId ? 'Updating' : 'Creating'} Admin...
                 </>
               ) : (
-                'Create Admin'
+                editingAdminId ? 'Update Admin' : 'Create Admin'
               )}
             </Button>
           </DialogFooter>
@@ -1017,61 +1100,79 @@ const ClientsPage = () => {
           </DialogHeader>
 
           <div className="py-4">
-            {/* Simple Admin List */}
-            <div className="space-y-3">
-              <p className="text-sm text-slate-600">
-                Total Admins: {clientAdmins.length}
-              </p>
-              
-              {clientAdmins.length === 0 ? (
-                <div className="text-center py-8">
-                  <p className="text-slate-500">No admins found</p>
-                  <Button
-                    onClick={() => {
-                      setIsViewAdminsDialogOpen(false)
-                      if (selectedClient) {
-                        handleAddAdmin(selectedClient)
-                      }
-                    }}
-                    className="mt-4"
-                    size="sm"
-                  >
-                    Add First Admin
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {clientAdmins.map((admin, index) => (
-                    <div key={admin._id || index} className="p-3 border rounded-lg">
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <p className="font-medium">
-                            {admin.firstName} {admin.lastName}
-                          </p>
-                          <p className="text-sm text-slate-600">{admin.email}</p>
-                          <p className="text-sm text-slate-600">{admin.phoneNumber}</p>
+            {/* Loading State */}
+            {isLoadingClientAdmins ? (
+              <div className="text-center py-8">
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-slate-400" />
+                <p className="text-slate-500 mt-2">Loading admins...</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-slate-600">
+                  Total Admins: {clientAdmins.length}
+                </p>
+                
+                {clientAdmins.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-slate-500">No admins found</p>
+                    <Button
+                      onClick={() => {
+                        setIsViewAdminsDialogOpen(false)
+                        if (selectedClient) {
+                          handleAddAdmin(selectedClient)
+                        }
+                      }}
+                      className="mt-4"
+                      size="sm"
+                    >
+                      Add First Admin
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {clientAdmins.map((admin, index) => (
+                      <div key={admin._id || index} className="p-3 border rounded-lg hover:bg-slate-50 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <p className="font-medium text-slate-900">
+                              {admin.firstName} {admin.lastName}
+                            </p>
+                            <p className="text-sm text-slate-600 flex items-center gap-1 mt-1">
+                              <Mail className="h-3 w-3" />
+                              {admin.email}
+                            </p>
+                            <p className="text-sm text-slate-600 flex items-center gap-1 mt-1">
+                              <Phone className="h-3 w-3" />
+                              {admin.phoneNumber}
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditClientAdmin(admin)}
+                              className="gap-1"
+                            >
+                              <Pencil className="h-3 w-3" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDeleteClientAdmin(admin._id, `${admin.firstName} ${admin.lastName}`)}
+                              className="gap-1 text-red-600 hover:text-red-700 hover:bg-red-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Delete
+                            </Button>
+                          </div>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
-                            if (admin._id.startsWith('mock-')) {
-                              // Remove mock admin
-                              setClientAdmins(prev => prev.filter(a => a._id !== admin._id))
-                              toast.success('Mock admin removed')
-                            } else {
-                              handleDeleteClientAdmin(admin._id, `${admin.firstName} ${admin.lastName}`)
-                            }
-                          }}
-                        >
-                          Delete
-                        </Button>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           <DialogFooter>

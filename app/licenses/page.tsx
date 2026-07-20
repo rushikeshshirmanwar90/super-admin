@@ -40,9 +40,9 @@ const LicensesPage = () => {
 
     switch (filter) {
       case 'active':
-        return clients.filter(c => c.isLicenseActive)
+        return clients.filter(c => c.license !== 0)
       case 'expired':
-        return clients.filter(c => !c.isLicenseActive)
+        return clients.filter(c => c.license === 0)
       case 'expiring':
         return clients.filter(c => {
           if (!c.licenseExpiryDate) return false
@@ -125,7 +125,7 @@ const LicensesPage = () => {
                 className="gap-2"
               >
                 <CheckCircle className="h-4 w-4" />
-                Active ({clients.filter(c => c.isLicenseActive).length})
+                Active ({clients.filter(c => c.license !== 0).length})
               </Button>
               <Button
                 variant={filter === 'expired' ? 'default' : 'outline'}
@@ -133,7 +133,7 @@ const LicensesPage = () => {
                 className="gap-2"
               >
                 <XCircle className="h-4 w-4" />
-                Expired ({clients.filter(c => !c.isLicenseActive).length})
+                Expired ({clients.filter(c => c.license === 0).length})
               </Button>
               <Button
                 variant={filter === 'expiring' ? 'default' : 'outline'}
@@ -159,7 +159,7 @@ const LicensesPage = () => {
             {filteredClients.map((client) => {
               const daysRemaining = getDaysRemaining(client.licenseExpiryDate)
               const isExpiringSoon = daysRemaining !== null && daysRemaining <= 30 && daysRemaining > 0
-              const isExpired = !client.isLicenseActive || (daysRemaining !== null && daysRemaining <= 0)
+              const isExpired = client.license === 0 || (daysRemaining !== null && daysRemaining <= 0)
 
               return (
                 <Card
