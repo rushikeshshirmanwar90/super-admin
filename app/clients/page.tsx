@@ -161,16 +161,16 @@ const ClientsPage = () => {
     }
   }
 
-  const handleDelete = async (id: string, name: string) => {
+  const handleDelete = async (email: string, name: string) => {
     if (!confirm(`Are you sure you want to delete ${name}?`)) return
 
     try {
-      await clientAPI.delete(id)
+      await clientAPI.delete(email)
       toast.success('Client deleted successfully')
       fetchClients()
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting client:', error)
-      toast.error('Failed to delete client')
+      toast.error(error?.response?.data?.message || 'Failed to delete client')
     }
   }
 
@@ -588,7 +588,7 @@ const ClientsPage = () => {
                           </Link>
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => handleDelete(client._id!, client.name)}
+                          onClick={() => handleDelete(client.email, client.name)}
                           className="cursor-pointer text-red-600"
                         >
                           <Trash2 className="mr-2 h-4 w-4" />

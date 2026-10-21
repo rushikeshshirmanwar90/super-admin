@@ -89,7 +89,8 @@ export const clientAPI = {
   getById: (id: string) => api.get(`/api/clients?id=${id}`),
   create: (data: any) => api.post('/api/clients', data),
   update: (id: string, data: any) => api.put(`/api/clients?id=${id}`, data),
-  delete: (id: string) => api.delete(`/api/clients?email=${id}`), // Note: delete uses email parameter
+  // Backend deletes by email, not by _id
+  delete: (email: string) => api.delete(`/api/clients?email=${encodeURIComponent(email)}`),
 };
 
 // Admin API (uses /api/admin - route group (users) is not in URL)
