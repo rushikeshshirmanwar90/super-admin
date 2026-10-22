@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // Base API URL - Update this to your real-estate-apis URL
-const API_BASE_URL = process.env.NEXT_PUBLIC_DOMAIN || 'https://xsite.tech';
+const API_BASE_URL = process.env.NEXT_PUBLIC_DOMAIN || 'http://localhost:8080';
 
 // Bearer Token for API Authentication (token only, without "Bearer " prefix)
 const API_TOKEN = process.env.NEXT_PUBLIC_BEARER_TOKEN;
@@ -30,14 +30,14 @@ api.interceptors.request.use(
     if (!config.headers['Authorization']) {
       config.headers['Authorization'] = BEARER_TOKEN;
     }
-    
+
     console.log('🚀 API Request:', {
       method: config.method?.toUpperCase(),
       url: config.url,
       hasAuth: !!config.headers['Authorization'],
       authHeader: String(config.headers['Authorization']).substring(0, 30) + '...',
     });
-    
+
     return config;
   },
   (error) => {
@@ -61,7 +61,7 @@ api.interceptors.response.use(
       status: error.response?.status,
       data: error.response?.data,
     });
-    
+
     // Provide user-friendly error messages
     if (error.code === 'ERR_NETWORK') {
       error.userMessage = 'Cannot connect to server. Please check your internet connection or try again later.';
@@ -78,7 +78,7 @@ api.interceptors.response.use(
     } else {
       error.userMessage = error.response?.data?.message || 'An error occurred. Please try again.';
     }
-    
+
     return Promise.reject(error);
   }
 );
@@ -104,7 +104,7 @@ export const adminAPI = {
     // Since API doesn't support clientId filter, get all and filter on frontend
     return api.get('/api/admin').then(response => {
       const allAdmins = response.data.data || []
-      const filteredAdmins = Array.isArray(allAdmins) 
+      const filteredAdmins = Array.isArray(allAdmins)
         ? allAdmins.filter((admin: any) => admin.clientId === clientId)
         : []
       return {
@@ -126,17 +126,17 @@ export const statsAPI = {
         clientAPI.getAll(),
         adminAPI.getAll().catch(() => ({ data: { success: true, data: [] } })) // Handle if admin API doesn't exist yet
       ]);
-      
+
       console.log('📊 Dashboard API Responses:', {
         clientsResponse: clientsResponse.data,
         adminsResponse: adminsResponse.data,
       });
-      
+
       // Handle different response structures
       // API might return: { success: true, data: [...] } or { success: true, data: { clients: [...] } }
       let clients = [];
       let admins = [];
-      
+
       // Extract clients data
       if (clientsResponse.data.success) {
         if (Array.isArray(clientsResponse.data.data)) {
@@ -148,7 +148,7 @@ export const statsAPI = {
           clients = Object.values(clientsResponse.data.data).filter(item => Array.isArray(item))[0] || [];
         }
       }
-      
+
       // Extract admins data
       if (adminsResponse.data.success) {
         if (Array.isArray(adminsResponse.data.data)) {
@@ -160,25 +160,25 @@ export const statsAPI = {
           admins = Object.values(adminsResponse.data.data).filter(item => Array.isArray(item))[0] || [];
         }
       }
-      
+
       console.log('📊 Extracted data:', {
         clientsCount: clients.length,
         adminsCount: admins.length,
         clientsSample: clients[0],
         adminsSample: admins[0],
       });
-      
+
       // Ensure clients and admins are arrays
       if (!Array.isArray(clients)) {
         console.warn('⚠️ Clients is not an array:', typeof clients, clients);
         clients = [];
       }
-      
+
       if (!Array.isArray(admins)) {
         console.warn('⚠️ Admins is not an array:', typeof admins, admins);
         admins = [];
       }
-      
+
       return {
         totalClients: clients.length || 0,
         activeClients: clients.filter((c: any) => c.license !== 0)?.length || 0,
